@@ -1,0 +1,85 @@
+# Jamii Savings – local / CI target environment.
+#
+#   docker compose up -d --build                  # DB + mocks + MI
+#   docker compose --profile apim up -d           # ... plus API Manager (needs ~4 GB RAM)
+#
+# MI starts empty; scripts/deploy-mi.sh copies the built CARs into it and
+# scripts/deploy-apim.sh imports the APIs into APIM with apictl.
+
+name: jamii
+
+services:
+  accounts-db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: ${ACCOUNTS_DB_NAME:-jamii_accounts}
+      MYSQL_USER: ${ACCOUNTS_DB_USER:-jamii_app}
+      MYSQL_PASSWORD: ${ACCOUNTS_DB_PASSWORD:-change-me-app}
+    volumes:
+      - ./database/accounts/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/accounts/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - accounts-db-data:/var/lib/mysql
+    ports:
+      - "${ACCOUNTS_DB_HOST_PORT:-3307}:3306"   # 3307 on the host to avoid clashing with a local MySQL
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  customer-mock:
+    build: ./mocks/customer-service
+    environment:
+      SLOW_DELAY_MS: "15000"
+    ports:
+      - "3000:3000"
+
+  soap-mock:
+    build: ./mocks/loan-eligibility-soap
+    ports:
+      - "8088:8088"
+
+  mi:
+    build:
+      context: ./infrastructure/docker/mi
+    environment:
+      ACCOUNTS_DB_URL: "jdbc:mysql://accounts-db:3306/${ACCOUNTS_DB_NAME:-jamii_accounts}?useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=5000"
+      ACCOUNTS_DB_USER: ${ACCOUNTS_DB_USER:-jamii_app}
+      ACCOUNTS_DB_PASSWORD: ${ACCOUNTS_DB_PASSWORD:-change-me-app}
+      CUSTOMER_BACKEND_URL: ${CUSTOMER_BACKEND_URL:-https://jsonplaceholder.typicode.com}
+      LOAN_SOAP_BACKEND_URL: ${LOAN_SOAP_BACKEND_URL:-http://www.dneonline.com/calculator.asmx}
+    ports:
+      - "8290:8290"   # HTTP APIs
+      - "8253:8253"   # HTTPS APIs
+      - "9164:9164"   # Management API (used by deploy-mi.sh)
+    volumes:
+      # Deployed CARs survive container re-creation (e.g. switching backends).
+      - mi-carbonapps:/home/wso2carbon/wso2mi-4.6.0/repository/deployment/server/carbonapps
+    depends_on:
+      accounts-db:
+        condition: service_healthy
+      customer-mock:
+        condition: service_started
+      soap-mock:
+        condition: service_started
+
+  apim:
+    image: wso2/wso2am:4.6.0
+    profiles: ["apim"]
+    ports:
+      - "9443:9443"   # Publisher / Dev Portal / Admin / REST APIs
+      - "8243:8243"   # Gateway HTTPS
+      - "8280:8280"   # Gateway HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "curl -skf https://localhost:9443/services/Version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 20
+    depends_on:
+      - mi
+
+volumes:
+  accounts-db-data:
+  mi-carbonapps:

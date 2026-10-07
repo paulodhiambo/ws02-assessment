@@ -1,0 +1,29 @@
+[server]
+hostname = "localhost"
+
+[user_store]
+type = "read_only_ldap"
+
+[keystore.primary]
+file_name = "repository/resources/security/wso2carbon.jks"
+password = "wso2carbon"
+alias = "wso2carbon"
+key_password = "wso2carbon"
+
+[truststore]
+file_name = "repository/resources/security/client-truststore.jks"
+password = "wso2carbon"
+alias = "symmetric.key.value"
+algorithm = "AES"
+
+# Upper bound for any backend socket. Per-endpoint timeouts (5-10s) are
+# shorter and take precedence.
+[transport.http]
+socket_timeout = 60000
+
+[synapse_properties]
+# Endpoint timeouts are enforced by a background sweeper; the default 15s
+# interval would turn a 5s endpoint timeout into ~15s.
+'synapse.timeout_handler_interval' = 1000
+# CORS is handled at the API Manager gateway, not here.
+'synapse.rest.CORSConfig.enabled' = false
