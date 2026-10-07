@@ -3,6 +3,9 @@
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Prefer the apictl installed by scripts/install-apictl.sh, if present.
+[[ -x "$REPO_ROOT/.tools/apictl/apictl" ]] && PATH="$REPO_ROOT/.tools/apictl:$PATH"
+
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "${SCRIPT_NAME:-jamii}" "$*" >&2; }
 warn() { printf '\033[1;33m[%s] WARN\033[0m %s\n' "${SCRIPT_NAME:-jamii}" "$*" >&2; }
 die()  { printf '\033[1;31m[%s] ERROR\033[0m %s\n' "${SCRIPT_NAME:-jamii}" "$*" >&2; exit 1; }
