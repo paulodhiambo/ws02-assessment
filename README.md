@@ -152,29 +152,28 @@ All three APIs use the same error structure:
 {
   "error": {
     "code": "ACCOUNT_DB_UNAVAILABLE",
-    "message": "The account service is temporarily unavailable",
-    "status": 503,
-    "requestId": "2f0b1f8d-...",
-    "correlationId": "abc-123",
-    "timestamp": "2026-10-07T15:30:00Z"
-  }
+    "message": "The accounts database is currently unavailable. Please retry later.",
+    "status": 503
+  },
+  "requestId": "2fe466e6-009d-4539-ae67-228d4965fc2d",
+  "correlationId": "demo-corr-0001",
+  "timestamp": "2026-10-07T16:29:45.072Z"
 }
 ```
 
 The response is generated through a shared error sequence rather than being independently implemented by each API.
 
-The main error codes include:
+The error codes are:
 
-```text
-INVALID_REQUEST
-ACCOUNT_NOT_FOUND
-CUSTOMER_NOT_FOUND
-BACKEND_TIMEOUT
-BACKEND_UNAVAILABLE
-ACCOUNT_DB_UNAVAILABLE
-SOAP_FAULT
-INTERNAL_ERROR
-```
+| API | Codes |
+| --- | ----- |
+| Account balance | `INVALID_ACCOUNT_NUMBER` (400), `ACCOUNT_NOT_FOUND` (404), `ACCOUNT_DB_UNAVAILABLE` (503) |
+| Customer | `INVALID_CUSTOMER_ID` (400), `CUSTOMER_NOT_FOUND` (404), `CUSTOMER_BACKEND_ERROR` (502), `CUSTOMER_BACKEND_UNAVAILABLE` (503), `CUSTOMER_BACKEND_TIMEOUT` (504) |
+| Loan eligibility | `INVALID_REQUEST` (400), `UNSUPPORTED_MEDIA_TYPE` (415), `LOAN_REQUEST_REJECTED` (422), `LOAN_SERVICE_ERROR` (502), `LOAN_SERVICE_UNAVAILABLE` (503), `LOAN_SERVICE_TIMEOUT` (504) |
+| Dashboard (Bonus A) | `DASHBOARD_UNAVAILABLE` (503), plus the customer codes above |
+| All | `INTERNAL_ERROR` (500) |
+
+The full catalogue, with when each code is returned, is in [API design](docs/api-design.md#error-catalogue).
 
 The implementation also deliberately avoids logging complete account numbers, customer information, credentials or tokens.
 
@@ -224,7 +223,7 @@ SOAP response
 JSON response
 ```
 
-There is no suitable public loan-eligibility SOAP service that directly provides the required behaviour, so the SOAP service is used to perform the underlying installment calculation. MI then applies the assignment's 40% debt-to-income rule to determine eligibility.
+There is no suitable public loan-eligibility SOAP service that directly provides the required behaviour, so the SOAP service is used to perform the underlying installment calculation. MI then applies a 40% debt-to-income rule to determine eligibility. The 40% threshold is an assumption of this implementation (a common lending rule of thumb), not something the assignment specifies.
 
 SOAP faults are handled inside MI and converted to the common REST error format. The original SOAP fault XML, including any server-side details or stack traces, is never returned to the API consumer.
 
@@ -297,24 +296,25 @@ The repository uses a single Jenkins pipeline for all three integrations.
 The pipeline performs the following stages:
 
 ```text
-Checkout
+Build & package          MI CARs (mvn clean install) and API Manager project archives
    ↓
-Validate
+Unit tests               MI artifact tests, mock and tooling tests (Go)
    ↓
-Build and test
+Archive artifacts        the exact CARs and archives that are deployed and promoted
    ↓
-Package MI artifacts
+Dev: environment         docker compose: MySQL, mocks, RabbitMQ, MI, API Manager
    ↓
-Package API Manager definitions
+Dev: deploy              MI, then API Manager, all-or-nothing
    ↓
-Deploy to DEV
+Dev: integration tests   Postman suite against MI and through the gateway,
+                         outage tests and Bonus B event tests
    ↓
-Run smoke tests
+Prod: approval           manual gate (only when PROMOTE_TO_PROD is selected)
    ↓
-Approval
-   ↓
-Promote the same artifacts
+Prod: deploy             promotes the same archived artifacts (dry run here)
 ```
+
+The same stages run on GitHub Actions (`.github/workflows/ci.yml`), using the same scripts.
 
 Only the development environment is wired to a running deployment target. Production is modelled through the configuration and pipeline stages but is not connected to a live production environment.
 
@@ -343,10 +343,13 @@ The API retrieves the customer profile and account information in parallel using
 A successful response contains:
 
 ```text
-profile
+customerId
+customer
 accounts
 partial
 errors
+requestId
+timestamp
 ```
 
 ### Partial-response decision
@@ -357,19 +360,23 @@ For example, if the customer service is unavailable but the account database is 
 
 ```json
 {
-  "profile": null,
-  "accounts": [...],
+  "customerId": "1",
   "partial": true,
+  "customer": null,
+  "accounts": [...],
   "errors": [
     {
-      "code": "BACKEND_UNAVAILABLE",
-      "message": "Customer service is unavailable"
+      "section": "customer",
+      "code": "CUSTOMER_BACKEND_UNAVAILABLE",
+      "message": "The customer service did not respond in time."
     }
-  ]
+  ],
+  "requestId": "752f7f5b-a482-4247-a93a-e7f5903590e4",
+  "timestamp": "2026-10-07T17:22:13.873Z"
 }
 ```
 
-Each branch has a seven-second timeout so that one slow backend does not unnecessarily hold the entire response.
+The parallel calls share a seven-second deadline, so one slow backend cannot hold the entire response.
 
 The API returns `404` when the customer does not exist. If both backend calls fail and there is no useful information to return, the API responds with:
 
@@ -424,6 +431,17 @@ The consumer acknowledges a message only after it has been fully handled: decide
 | Tracing | `X-Correlation-ID` header | the `x-correlation-id` AMQP header, propagated to the API call and to the decision or DLQ message |
 
 Reusing the Part 1c API keeps one set of validation and SOAP-fault rules for both entry points.
+
+---
+
+## What I would do differently with more time
+
+* **Testing:** add Synapse unit tests on MI's unit-test server, and contract tests that check the live MI responses against the OpenAPI definitions.
+* **Eligibility:** include interest in the eligibility calculation (a second SOAP operation through the existing call template), and cache decisions for identical requests.
+* **Security:** load secrets from a vault rather than environment variables, and use mutual TLS between the API gateway and MI.
+* **Observability:** ship JSON logs to a central platform and export MI and API Manager metrics to Prometheus, with alerts on the 5xx error codes and on DLQ depth.
+* **Production:** wire up a real production target (for example Kubernetes with Helm, with an MI image per release), and deploy only the APIs whose files changed.
+* **Events:** enable publisher confirms, add tooling to replay DLQ messages, and publish an AsyncAPI definition of the event contract.
 
 ---
 
