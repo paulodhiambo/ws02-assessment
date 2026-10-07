@@ -7,13 +7,13 @@
 
   Lifecycle:
     validate  build/package_car.py, validate only    (well-formed XML, names, no duplicates)
-    test      tests/run_tests.py                     (artifact policy tests; -DskipTests honoured)
+    test      go test ./... in tests/                (artifact policy tests; -DskipTests honoured)
     package   build/package_car.py                   -> target/cars/*.car
     install   CARs attached as Maven artifacts (type "car")
 
   The CAR layout matches what the WSO2 MI tooling produces; packaging is done
-  by a small script so the build only needs Maven + Python 3, not the WSO2
-  plugin repository. See docs/deployment.md.
+  by a small script so the build only needs Maven, Python 3 and Go (tests),
+  not the WSO2 plugin repository. See docs/deployment.md.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -31,6 +31,7 @@
         <car.version>${project.version}</car.version>
         <car.output>${project.build.directory}/cars</car.output>
         <python.executable>python3</python.executable>
+        <go.executable>go</go.executable>
         <skipTests>false</skipTests>
     </properties>
 
@@ -61,9 +62,12 @@
                         <goals><goal>exec</goal></goals>
                         <configuration>
                             <skip>${skipTests}</skip>
-                            <executable>${python.executable}</executable>
+                            <executable>${go.executable}</executable>
+                            <workingDirectory>${project.basedir}/tests</workingDirectory>
                             <arguments>
-                                <argument>${project.basedir}/tests/run_tests.py</argument>
+                                <argument>test</argument>
+                                <argument>-count=1</argument>
+                                <argument>./...</argument>
                             </arguments>
                         </configuration>
                     </execution>

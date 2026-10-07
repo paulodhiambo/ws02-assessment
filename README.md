@@ -20,7 +20,7 @@ More detail: [architecture](docs/architecture.md) · [API design, mappings and e
 
 ## Run it locally
 
-Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Python 3.
+Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Python 3, Go 1.24+.
 
 ```bash
 scripts/build.sh                                       # 4 CARs + APIM packages; runs 34 MI artifact tests

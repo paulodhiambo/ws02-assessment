@@ -7,7 +7,8 @@
 | Docker + compose plugin | 29.x / v2 | the whole environment |
 | JDK | 17+ (tested on 21) | Maven |
 | Maven | 3.9+ | MI build |
-| Python 3 | 3.9+ | CAR packaging, MI tests, deploy helpers (standard library only) |
+| Python 3 | 3.9+ | CAR packaging, deploy helpers (standard library only) |
+| Go | 1.24+ | MI artifact tests and the mocks' unit tests (`scripts/test.sh` falls back to the `golang` image if Go is not installed) |
 | apictl | 4.6.x | APIM import (`scripts/install-apictl.sh` installs it into `.tools/`, where the scripts look first) |
 | curl, zip, rsync | n/a | scripts |
 
@@ -49,7 +50,7 @@ docker compose up -d mi        # deployed CARs survive (volume), no redeploy nee
 | Phase | What runs |
 |-------|-----------|
 | validate | `build/package_car.py --validate-only`: XML well-formed, artifact names match files, no duplicates across modules |
-| test | `tests/run_tests.py`: 34 artifact tests (policies and per-API contracts) |
+| test | `go test ./...` in `tests/`: 34 artifact tests (policies and per-API contracts) |
 | package | `build/package_car.py` → `target/cars/Jamii{Common,AccountBalance,CustomerProxy,LoanEligibility}_<version>.car` |
 | install | CARs attached as Maven artifacts (type `car`) |
 

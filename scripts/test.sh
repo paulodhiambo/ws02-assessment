@@ -7,7 +7,7 @@
 #   scripts/test.sh --chaos                 stops the DB/backends and checks the error mapping
 #   scripts/test.sh --all                   unit + integration (MI) + chaos
 #
-# Unit:        mock services (go vet + go test) and MI artifact tests (python).
+# Unit:        mock services and MI artifact tests (go vet + go test).
 # Integration: needs the compose stack with CARs deployed (and APIs imported for --apim).
 #              newman runs in Docker on the compose network, so no local Node/newman is needed.
 #              The "mock-backend" folder runs only when MI points at the local customer mock.
@@ -32,18 +32,23 @@ done
 NETWORK="${COMPOSE_NETWORK:-jamii_default}"
 FAILED=0
 
+# go_test <dir relative to the repo>: go vet + go test, with local Go if
+# installed, otherwise in the golang image (the repo is mounted read-only).
+go_test() {
+  if command -v go >/dev/null; then
+    (cd "$REPO_ROOT/$1" && go vet ./... && go test -count=1 ./...)
+  else
+    docker run --rm -v "$REPO_ROOT:/repo:ro" -w "/repo/$1" -e GOFLAGS=-buildvcs=false \
+      golang:1.27-alpine sh -c 'go vet ./... && go test -count=1 ./...'
+  fi
+}
+
 run_unit() {
   log "unit: mock services"
-  for mock in customer-service loan-eligibility-soap; do
-    if command -v go >/dev/null; then
-      (cd "$REPO_ROOT/mocks/$mock" && go vet ./... && go test -count=1 ./...) || FAILED=1
-    else
-      docker run --rm -v "$REPO_ROOT/mocks/$mock:/src:ro" -w /src -e GOFLAGS=-buildvcs=false \
-        golang:1.27-alpine sh -c 'go vet ./... && go test -count=1 ./...' || FAILED=1
-    fi
-  done
+  go_test mocks/customer-service || FAILED=1
+  go_test mocks/loan-eligibility-soap || FAILED=1
   log "unit: MI artifact tests"
-  python3 "$REPO_ROOT/mi/tests/run_tests.py" || FAILED=1
+  go_test mi/tests || FAILED=1
 }
 
 mi_customer_backend() { compose exec -T mi printenv CUSTOMER_BACKEND_URL 2>/dev/null || true; }
