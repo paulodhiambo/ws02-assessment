@@ -124,16 +124,17 @@ if ! apictl import api-product -f "$DIST/product" -e "$APICTL_ENV" -k --update-a
   die "import of $PRODUCT_NAME failed; APIM restored to its previous state"
 fi
 
-# 4. revisions reach the gateway asynchronously: wait until every API answers
+# 4. revisions reach the gateway asynchronously: wait until every operation answers
 #    (401 without credentials) instead of 404.
 gateway_serves() { [[ "$(curl -sk -o /dev/null -w '%{http_code}' "$1")" != 404 ]]; }
 for entry in "${APIS[@]}"; do
   IFS=: read -r dir name path <<<"$entry"
   context="$(sed -n 's/^  context: //p' "$DIST/$dir/api.yaml")"
-  target="$(sed -n 's/^    - target: //p' "$DIST/$dir/api.yaml" | head -1 | sed 's/{[^}]*}/probe/g')"
-  url="$APIM_GATEWAY_URL$context/$API_VERSION$target"
-  wait_for "gateway route $context/$API_VERSION" 120 gateway_serves "$url" \
-    || die "$name imported but not served by the gateway at $url"
+  for target in $(sed -n 's/^    - target: //p' "$DIST/$dir/api.yaml" | sed 's/{[^}]*}/probe/g'); do
+    url="$APIM_GATEWAY_URL$context/$API_VERSION$target"
+    wait_for "gateway route $context/$API_VERSION$target" 120 gateway_serves "$url" \
+      || die "$name imported but $url is not served by the gateway"
+  done
 done
 
 log "deployed to $APICTL_ENV:"
