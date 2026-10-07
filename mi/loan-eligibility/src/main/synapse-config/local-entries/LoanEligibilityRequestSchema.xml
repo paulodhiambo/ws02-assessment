@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JSON Schema (draft-04) for POST /loans/eligibility, used by the validate
+  mediator. Anything that does not match is rejected with 400 before a
+  backend is called.
+-->
+<localEntry key="LoanEligibilityRequestSchema" xmlns="http://ws.apache.org/ns/synapse"><![CDATA[{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "LoanEligibilityRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["customerId", "monthlyIncome", "requestedAmount", "tenureMonths"],
+  "properties": {
+    "customerId":          { "type": "string",  "pattern": "^[A-Za-z0-9-]{1,20}$" },
+    "monthlyIncome":       { "type": "number",  "minimum": 0, "exclusiveMinimum": true, "maximum": 1000000000 },
+    "existingMonthlyDebt": { "type": "number",  "minimum": 0, "maximum": 1000000000 },
+    "requestedAmount":     { "type": "number",  "minimum": 0, "exclusiveMinimum": true, "maximum": 1000000000000 },
+    "tenureMonths":        { "type": "integer", "minimum": 1, "maximum": 360 },
+    "currency":            { "type": "string",  "enum": ["KES"] }
+  }
+}]]></localEntry>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Calls the calculator's SOAP Divide operation and leaves the SOAP response
+  (or SOAP fault) in the message body.
+
+  Params: dividend, divisor (both must already be integers; the service is Int32).
+  Kept as a template so a second SOAP operation (e.g. Multiply for an
+  interest calculation) can reuse the same endpoint and header handling.
+-->
+<template name="CalculatorDivideTemplate" xmlns="http://ws.apache.org/ns/synapse">
+    <parameter name="dividend"/>
+    <parameter name="divisor"/>
+    <sequence>
+        <payloadFactory media-type="xml">
+            <format>
+                <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+                    <soapenv:Header/>
+                    <soapenv:Body>
+                        <tem:Divide>
+                            <tem:intA>$1</tem:intA>
+                            <tem:intB>$2</tem:intB>
+                        </tem:Divide>
+                    </soapenv:Body>
+                </soapenv:Envelope>
+            </format>
+            <args>
+                <arg evaluator="xml" expression="$func:dividend"/>
+                <arg evaluator="xml" expression="$func:divisor"/>
+            </args>
+        </payloadFactory>
+        <!-- Nothing from the caller's HTTP request is forwarded to the SOAP service. -->
+        <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+        <header name="X-Correlation-ID" scope="transport" expression="get-property('CORRELATION_ID')"/>
+        <header name="Action" value="http://tempuri.org/Divide"/>
+        <property name="SOAPAction" value="http://tempuri.org/Divide" scope="transport" type="STRING"/>
+        <property name="messageType" value="text/xml" scope="axis2" type="STRING"/>
+        <property name="ContentType" value="text/xml" scope="axis2" type="STRING"/>
+        <property name="HTTP_METHOD" value="POST" scope="axis2" type="STRING"/>
+        <call>
+            <endpoint key="LoanSoapEP"/>
+        </call>
+    </sequence>
+</template>

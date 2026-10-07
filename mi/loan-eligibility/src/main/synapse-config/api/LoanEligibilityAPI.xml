@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  POST /loans/eligibility - REST/JSON facade over a SOAP 1.1 service.
+
+  Request:
+    { "customerId": "1", "monthlyIncome": 120000, "existingMonthlyDebt": 15000,
+      "requestedAmount": 500000, "tenureMonths": 12 }
+
+  Mapping (see docs/api-design.md):
+    1. SOAP Divide(intA = round(requestedAmount), intB = tenureMonths)
+         -> monthlyInstallment (whole KES; the service is Int32 and rounds half-to-even)
+    2. maxAffordableInstallment = 40% of monthlyIncome - existingMonthlyDebt
+    3. eligible = monthlyInstallment <= maxAffordableInstallment
+
+  200 -> eligibility decision
+  400 -> INVALID_REQUEST (malformed JSON or schema violation)
+  415 -> UNSUPPORTED_MEDIA_TYPE
+  422 -> LOAN_REQUEST_REJECTED  (soap:Client fault, e.g. amount beyond service range)
+  502 -> LOAN_SERVICE_ERROR     (soap:Server fault / unexpected SOAP response)
+  503 -> LOAN_SERVICE_UNAVAILABLE, 504 -> LOAN_SERVICE_TIMEOUT (loan-fault)
+-->
+<api name="LoanEligibilityAPI" context="/loans" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="POST" uri-template="/eligibility" faultSequence="loan-fault">
+        <inSequence>
+            <property name="API_NAME" value="LoanEligibilityAPI" scope="default" type="STRING"/>
+            <property name="OPERATION" value="POST /loans/eligibility" scope="default" type="STRING"/>
+            <property name="STAGE" value="VALIDATION" scope="default" type="STRING"/>
+            <sequence key="correlation"/>
+            <property name="LOG_SUBJECT" value="customer=unvalidated" scope="default" type="STRING"/>
+            <sequence key="request-logging"/>
+
+            <filter source="$trp:Content-Type" regex="(?i)application/json.*">
+                <then/>
+                <else>
+                    <property name="ERROR_STATUS" value="415" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="UNSUPPORTED_MEDIA_TYPE" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="Content-Type must be application/json." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+
+            <validate cache-schema="true">
+                <schema key="LoanEligibilityRequestSchema"/>
+                <on-fail>
+                    <log category="WARN" level="custom" separator=", ">
+                        <property name="event" value="VALIDATION_FAILED"/>
+                        <property name="api" expression="get-property('API_NAME')"/>
+                        <property name="reason" expression="get-property('ERROR_MESSAGE')"/>
+                        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+                    </log>
+                    <property name="ERROR_STATUS" value="400" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="INVALID_REQUEST" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" scope="default" type="STRING"
+                              value="Request body must be JSON with customerId (string), monthlyIncome (&gt; 0), requestedAmount (&gt; 0), tenureMonths (integer 1-360) and optional existingMonthlyDebt (&gt;= 0)."/>
+                    <sequence key="common-error"/>
+                </on-fail>
+            </validate>
+
+            <property name="CUSTOMER_ID" expression="json-eval($.customerId)" scope="default" type="STRING"/>
+            <property name="MONTHLY_INCOME" expression="json-eval($.monthlyIncome)" scope="default" type="STRING"/>
+            <property name="EXISTING_DEBT" expression="json-eval($.existingMonthlyDebt)" scope="default" type="STRING"/>
+            <property name="REQUESTED_AMOUNT" expression="json-eval($.requestedAmount)" scope="default" type="STRING"/>
+            <property name="TENURE_MONTHS" expression="json-eval($.tenureMonths)" scope="default" type="STRING"/>
+            <filter xpath="string(number(get-property('EXISTING_DEBT'))) = 'NaN'">
+                <then>
+                    <property name="EXISTING_DEBT" value="0" scope="default" type="STRING"/>
+                </then>
+            </filter>
+            <property name="MASK_INPUT" expression="get-property('CUSTOMER_ID')" scope="default" type="STRING"/>
+            <sequence key="mask-sensitive-data"/>
+            <property name="LOG_SUBJECT" expression="concat('customer=', get-property('MASKED_VALUE'))" scope="default" type="STRING"/>
+
+            <!-- Backend call -->
+            <property name="STAGE" value="BACKEND_CALL" scope="default" type="STRING"/>
+            <property name="BACKEND_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_CALL"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backend" value="Calculator.Divide (SOAP 1.1)"/>
+                <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+            <call-template target="CalculatorDivideTemplate">
+                <with-param name="dividend" value="{string(round(number(get-property('REQUESTED_AMOUNT'))))}"/>
+                <with-param name="divisor" value="{get-property('TENURE_MONTHS')}"/>
+            </call-template>
+            <property name="STAGE" value="MAPPING" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_RESPONSE"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backendStatus" expression="$axis2:HTTP_SC"/>
+                <property xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" name="soapFault" expression="boolean($body/soap:Fault)"/>
+                <property name="latencyMs" expression="string(number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START')))"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+
+            <!-- SOAP faults: log for operators, never return the fault XML. -->
+            <filter xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xpath="boolean($body/soap:Fault)">
+                <then>
+                    <property xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" name="SOAP_FAULT_CODE" expression="normalize-space($body/soap:Fault/faultcode)" scope="default" type="STRING"/>
+                    <log category="WARN" level="custom" separator=", ">
+                        <property name="event" value="SOAP_FAULT"/>
+                        <property name="api" expression="get-property('API_NAME')"/>
+                        <property name="faultcode" expression="get-property('SOAP_FAULT_CODE')"/>
+                        <property xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" name="faultstring" expression="substring(substring-before(concat($body/soap:Fault/faultstring, '&#10;'), '&#10;'), 1, 300)"/>
+                        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+                    </log>
+                    <filter source="get-property('SOAP_FAULT_CODE')" regex="(.*:)?Client">
+                        <then>
+                            <property name="ERROR_STATUS" value="422" scope="default" type="STRING"/>
+                            <property name="ERROR_CODE_APP" value="LOAN_REQUEST_REJECTED" scope="default" type="STRING"/>
+                            <property name="ERROR_MSG_APP" value="The eligibility service could not process these loan parameters (for example, an amount beyond its supported range)." scope="default" type="STRING"/>
+                        </then>
+                        <else>
+                            <property name="ERROR_STATUS" value="502" scope="default" type="STRING"/>
+                            <property name="ERROR_CODE_APP" value="LOAN_SERVICE_ERROR" scope="default" type="STRING"/>
+                            <property name="ERROR_MSG_APP" value="The eligibility service failed to process the request." scope="default" type="STRING"/>
+                        </else>
+                    </filter>
+                    <sequence key="common-error"/>
+                </then>
+            </filter>
+
+            <filter xmlns:tem="http://tempuri.org/" xpath="boolean($body/tem:DivideResponse/tem:DivideResult)">
+                <then/>
+                <else>
+                    <property name="ERROR_STATUS" value="502" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="LOAN_SERVICE_ERROR" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="The eligibility service returned an unexpected response." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+
+            <!-- Business rule on top of the SOAP result. -->
+            <property xmlns:tem="http://tempuri.org/" name="INSTALLMENT" expression="string(number($body/tem:DivideResponse/tem:DivideResult))" scope="default" type="STRING"/>
+            <property name="MAX_AFFORDABLE" scope="default" type="STRING"
+                      expression="string(round((number(get-property('MONTHLY_INCOME')) * 0.4 - number(get-property('EXISTING_DEBT'))) * 100) div 100)"/>
+            <property name="ELIGIBLE" scope="default" type="STRING"
+                      expression="number(get-property('INSTALLMENT')) &lt;= number(get-property('MAX_AFFORDABLE'))"/>
+            <filter source="get-property('ELIGIBLE')" regex="true">
+                <then>
+                    <property name="DECISION" value="ELIGIBLE" scope="default" type="STRING"/>
+                    <property name="REASON" value="Monthly installment is within 40% of monthly income after existing debt." scope="default" type="STRING"/>
+                </then>
+                <else>
+                    <property name="DECISION" value="NOT_ELIGIBLE" scope="default" type="STRING"/>
+                    <property name="REASON" value="Monthly installment exceeds 40% of monthly income after existing debt." scope="default" type="STRING"/>
+                </else>
+            </filter>
+            <property name="RESPONSE_TIMESTAMP" scope="default" type="STRING"
+                      expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+            <payloadFactory media-type="json">
+                <format>{"customerId":"$1","eligible":$2,"decision":"$3","reason":"$4","loan":{"requestedAmount":$5,"tenureMonths":$6,"monthlyInstallment":$7,"maxAffordableInstallment":$8,"currency":"KES"},"requestId":"$9","timestamp":"$10"}</format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('CUSTOMER_ID')"/>
+                    <arg evaluator="xml" expression="get-property('ELIGIBLE')"/>
+                    <arg evaluator="xml" expression="get-property('DECISION')"/>
+                    <arg evaluator="xml" expression="get-property('REASON')"/>
+                    <arg evaluator="xml" expression="get-property('REQUESTED_AMOUNT')"/>
+                    <arg evaluator="xml" expression="get-property('TENURE_MONTHS')"/>
+                    <arg evaluator="xml" expression="get-property('INSTALLMENT')"/>
+                    <arg evaluator="xml" expression="get-property('MAX_AFFORDABLE')"/>
+                    <arg evaluator="xml" expression="get-property('REQUEST_ID')"/>
+                    <arg evaluator="xml" expression="get-property('RESPONSE_TIMESTAMP')"/>
+                </args>
+            </payloadFactory>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+            <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+            <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+            <sequence key="response-logging"/>
+            <respond/>
+        </inSequence>
+    </resource>
+</api>

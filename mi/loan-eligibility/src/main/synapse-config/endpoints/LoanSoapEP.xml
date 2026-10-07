@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOAP 1.1 backend for the eligibility check: the public DNE Online
+  calculator (http://www.dneonline.com/calculator.asmx) or the local
+  contract-compatible mock. Selected by LOAN_SOAP_BACKEND_URL at deploy time;
+  deployment fails if the variable is missing.
+
+  10s timeout (public service, sometimes slow). No suspension on timeout:
+  every call is independent, and an eligibility check is cheap to retry.
+-->
+<endpoint name="LoanSoapEP" xmlns="http://ws.apache.org/ns/synapse">
+    <address uri="$SYSTEM:LOAN_SOAP_BACKEND_URL" format="soap11">
+        <timeout>
+            <duration>10000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <suspendOnFailure>
+            <errorCodes>101503,101505</errorCodes>
+            <initialDuration>2000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>30000</maximumDuration>
+        </suspendOnFailure>
+        <markForSuspension>
+            <errorCodes>-1</errorCodes>
+        </markForSuspension>
+    </address>
+</endpoint>
