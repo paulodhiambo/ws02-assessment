@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Masks an identifier for logging: keeps the last 4 characters, replaces the
+  rest with '*'. Values of 4 characters or fewer are fully masked.
+
+  Input:  MASK_INPUT   (e.g. 0100000001)
+  Output: MASKED_VALUE (e.g. ******0001)
+
+  Payloads containing customer PII (names, emails, phones, addresses) are never
+  logged at all; only masked identifiers are.
+-->
+<sequence name="mask-sensitive-data" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <filter xpath="string-length(get-property('MASK_INPUT')) &gt; 4">
+        <then>
+            <property name="MASKED_VALUE" scope="default" type="STRING"
+                      expression="concat(substring('********************************', 1, string-length(get-property('MASK_INPUT')) - 4), substring(get-property('MASK_INPUT'), string-length(get-property('MASK_INPUT')) - 3))"/>
+        </then>
+        <else>
+            <property name="MASKED_VALUE" value="****" scope="default" type="STRING"/>
+        </else>
+    </filter>
+    <property name="MASK_INPUT" action="remove" scope="default"/>
+</sequence>

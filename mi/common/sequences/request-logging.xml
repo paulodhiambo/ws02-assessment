@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logs the "request in" point. Expects API_NAME, OPERATION and LOG_SUBJECT
+  (an already-masked identifier) to be set by the calling API.
+  Never logs the payload or the raw request path (it contains identifiers).
+-->
+<sequence name="request-logging" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="INFO" level="custom" separator=", ">
+        <property name="event" value="REQUEST_IN"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="operation" expression="get-property('OPERATION')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="requestId" expression="get-property('REQUEST_ID')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+</sequence>

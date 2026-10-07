@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Establishes request identity for every API call.
+
+  - REQUEST_ID:     generated per MI request; returned in the response body/header.
+  - CORRELATION_ID: taken from the caller's X-Correlation-ID header when it is
+                    present and well-formed, otherwise generated. Propagated to
+                    backends and echoed back to the caller.
+
+  The caller-supplied value is format-checked before use so it cannot inject
+  content into logs or downstream headers.
+-->
+<sequence name="correlation" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <property name="REQUEST_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
+    <property name="REQUEST_ID" expression="substring-after(get-property('MessageID'), 'urn:uuid:')" scope="default" type="STRING"/>
+    <property name="CORRELATION_ID" expression="$trp:X-Correlation-ID" scope="default" type="STRING"/>
+    <filter source="get-property('CORRELATION_ID')" regex="[A-Za-z0-9._\-]{8,64}">
+        <then/>
+        <else>
+            <property name="CORRELATION_ID" expression="get-property('REQUEST_ID')" scope="default" type="STRING"/>
+        </else>
+    </filter>
+    <header name="X-Correlation-ID" scope="transport" expression="get-property('CORRELATION_ID')"/>
+</sequence>

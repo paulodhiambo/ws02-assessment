@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Builds and sends the single error envelope shared by all three APIs,
+  whatever the backend (database, REST or SOAP):
+
+  {
+    "error": { "code": "ACCOUNT_NOT_FOUND", "message": "...", "status": 404 },
+    "requestId": "uuid",
+    "correlationId": "string",
+    "timestamp": "ISO-8601"
+  }
+
+  Inputs: ERROR_STATUS (HTTP status), ERROR_CODE_APP (stable machine code),
+          ERROR_MSG_APP (safe, human-readable message).
+
+  Backend details (SQL errors, SOAP faults, stack traces) are logged by the
+  caller's fault sequence where needed, never placed in the response.
+-->
+<sequence name="common-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <filter xpath="string-length(get-property('ERROR_STATUS')) = 0">
+        <then>
+            <property name="ERROR_STATUS" value="500" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="INTERNAL_ERROR" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="An unexpected error occurred." scope="default" type="STRING"/>
+        </then>
+    </filter>
+    <property name="RESPONSE_TIMESTAMP" scope="default" type="STRING"
+              expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+    <payloadFactory media-type="json">
+        <format>{"error":{"code":"$1","message":"$2","status":$3},"requestId":"$4","correlationId":"$5","timestamp":"$6"}</format>
+        <args>
+            <arg evaluator="xml" expression="get-property('ERROR_CODE_APP')"/>
+            <arg evaluator="xml" expression="get-property('ERROR_MSG_APP')"/>
+            <arg evaluator="xml" expression="get-property('ERROR_STATUS')"/>
+            <arg evaluator="xml" expression="get-property('REQUEST_ID')"/>
+            <arg evaluator="xml" expression="get-property('CORRELATION_ID')"/>
+            <arg evaluator="xml" expression="get-property('RESPONSE_TIMESTAMP')"/>
+        </args>
+    </payloadFactory>
+    <!-- Drop every backend response header; only our own go back to the caller. -->
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <property name="HTTP_SC" expression="get-property('ERROR_STATUS')" scope="axis2" type="STRING"/>
+    <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+    <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+    <property name="NO_ENTITY_BODY" action="remove" scope="axis2"/>
+    <sequence key="response-logging"/>
+    <respond/>
+</sequence>

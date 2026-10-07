@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logs the "response out" point and stamps the tracing headers on the response.
+  Called just before <respond/> on both success and error paths.
+-->
+<sequence name="response-logging" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <header name="X-Correlation-ID" scope="transport" expression="get-property('CORRELATION_ID')"/>
+    <header name="X-Request-ID" scope="transport" expression="get-property('REQUEST_ID')"/>
+    <log category="INFO" level="custom" separator=", ">
+        <property name="event" value="RESPONSE_OUT"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="httpStatus" expression="$axis2:HTTP_SC"/>
+        <property name="errorCode" expression="get-property('ERROR_CODE_APP')"/>
+        <property name="durationMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('REQUEST_START'))"/>
+        <property name="requestId" expression="get-property('REQUEST_ID')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+</sequence>
