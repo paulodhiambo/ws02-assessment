@@ -25,7 +25,7 @@ scripts/deploy-mi.sh dev                          # deploy the 4 CARs, all-or-no
 scripts/install-apictl.sh                              # apictl 4.6.4 into .tools/ (scripts find it there)
 scripts/deploy-apim.sh dev                        # import 3 APIs + product, all-or-nothing
 scripts/apim-demo-consumer.sh                     # Dev Portal app, subscriptions, keys; prints curl commands
-scripts/test.sh --all                             # unit + integration (MI) + chaos
+scripts/test.sh --all                             # unit + integration (MI) + chaos + events (bonus B)
 scripts/test.sh --integration --apim              # same suite through the gateway
 ```
 
@@ -110,7 +110,7 @@ Build & package → Unit tests → Archive → Dev: environment → Dev: deploy 
 | Archive | `mi/target/cars/*.car`, `dist/apim/*.zip` (fingerprinted) |
 | Dev: environment | `docker compose --profile apim up --wait`; `BACKENDS=mock\|public` picks the backends |
 | Dev: deploy | `deploy-mi.sh dev`, then `deploy-apim.sh dev`; if APIM fails, MI is restored from `target/mi-previous` and the build fails |
-| Dev: integration tests | newman → MI; Dev Portal onboarding; newman → gateway; chaos (DB, customer and SOAP backends stopped). JUnit reports published |
+| Dev: integration tests | newman → MI; Dev Portal onboarding; newman → gateway; chaos (DB, customer and SOAP backends stopped); events (bonus B: decisions, dead letters, retry exhaustion and recovery). JUnit reports published |
 | Prod | only with `PROMOTE_TO_PROD`; manual `input`; credentials `jamii-prod-mi-admin` / `jamii-prod-apim-admin` |
 | post | container logs archived; environment torn down unless `KEEP_DEV_ENV` |
 

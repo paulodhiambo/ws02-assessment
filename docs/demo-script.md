@@ -65,6 +65,18 @@ Point out: the mapping (41,667 vs 33,000 → NOT_ELIGIBLE); for the 422,
 show the log line with the real .NET stack trace from the SOAP fault, and
 note the client only saw `LOAN_REQUEST_REJECTED`. API key auth, Bronze tier.
 
+## Optional – Bonus B events (1m)
+
+```bash
+scripts/publish-loan-event.sh tests/events/valid-application.json demo-evt-001
+.tools/bin/jamii rabbit get --queue loan.decisions                 # LoanEligibilityDecided
+scripts/publish-loan-event.sh tests/events/malformed.txt demo-evt-002
+.tools/bin/jamii rabbit get --queue loan.applications.dlq          # original body + x-error-code
+```
+
+Show the RabbitMQ UI (`http://localhost:15672`, jamii / jamii-dev-only): the
+retry queue and the DLQ.
+
 ## 4:30 – Pipeline (30s)
 
 Show the Jenkins stage view (or `Jenkinsfile`) and run

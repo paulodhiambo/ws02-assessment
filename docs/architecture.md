@@ -19,6 +19,11 @@
                         │  LoanEligibilityAPI ─ CalculatorDivideTemplate ─ LoanSoapEP (10s) ─SOAP─┼──▶ DNE Online calculator.asmx
                         └─────────────────────────────────────────────────────────────────────────┘
                                    (local mocks with the same contracts replace both public backends in CI)
+
+  Bonus B:  RabbitMQ loan.applications ─▶ LoanApplicationInbound ─▶ POST /loans/eligibility (above)
+                                                │ decision ─▶ loan.decisions
+                                                │ unprocessable ─▶ loan.applications.dlq
+                                                └ transient ─▶ reject ─▶ loan.applications.retry (5 s) ─▶ back
 ```
 
 Everything runs from `docker-compose.yml`. MI starts with no integrations

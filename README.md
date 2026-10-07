@@ -1,130 +1,459 @@
-# Jamii Savings – WSO2 integration assignment
+# Jamii Savings – WSO2 Integration Assignment
 
-Three integrations for the fictional **Jamii Savings** bank, built on **WSO2
-Micro Integrator 4.6**, exposed through **WSO2 API Manager 4.6**, and built,
-tested and deployed by one **Jenkins** pipeline against a docker-compose
-environment.
+This project implements three integrations for the fictional **Jamii Savings** bank using **WSO2 Micro Integrator 4.6**. The APIs are exposed and managed through **WSO2 API Manager 4.6**, with the build, testing, and deployment process automated through Jenkins.
 
-| Part | API | Where |
-|------|-----|-------|
-| 1a | `GET /accounts/{accountNumber}/balance`: MySQL through an MI data service | `mi/account-balance`, `database/accounts` |
-| 1b | `GET /customers/{customerId}`: managed proxy for JSONPlaceholder | `mi/customer-proxy` |
-| 1c | `POST /loans/eligibility`: REST/JSON over the DNE Online SOAP calculator | `mi/loan-eligibility` |
-| bonus A | `GET /customers/{customerId}/dashboard`: parallel aggregation with partial results | `mi/customer-proxy` |
-| shared | correlation IDs, logging, masking, the common error envelope | `mi/common` |
-| 2 | apictl projects, OpenAPI definitions, custom policies, API Product | `apim/` |
-| 3 | `Jenkinsfile` + `scripts/` (build, test, all-or-nothing deploy) | root |
-| CI on GitHub | `.github/workflows/ci.yml`: the same stages on GitHub Actions, calling the same scripts | `.github/` |
+Everything can be run locally using Docker Compose, including the database, mock backend services, Micro Integrator, and API Manager.
 
-More detail: [architecture](docs/architecture.md) · [API design, mappings and error catalogue](docs/api-design.md) · [build and deploy](docs/deployment.md) · [demo script](docs/demo-script.md)
+| Part    | API / Component                                                            | Location                                  |
+| ------- | -------------------------------------------------------------------------- | ----------------------------------------- |
+| 1a      | `GET /accounts/{accountNumber}/balance` – MySQL-backed account lookup      | `mi/account-balance`, `database/accounts` |
+| 1b      | `GET /customers/{customerId}` – managed REST proxy                         | `mi/customer-proxy`                       |
+| 1c      | `POST /loans/eligibility` – REST/JSON to SOAP integration                  | `mi/loan-eligibility`                     |
+| Bonus A | `GET /customers/{customerId}/dashboard` – parallel aggregation             | `mi/customer-proxy`                       |
+| Bonus B | RabbitMQ loan-application events – consume, call 1c, publish, dead-letter  | `mi/loan-events`, `infrastructure/docker/rabbitmq` |
+| Shared  | Correlation IDs, logging, sensitive-data masking and common error handling | `mi/common`                               |
+| Part 2  | OpenAPI definitions, API Manager projects, policies and API Product        | `apim/`                                   |
+| Part 3  | Jenkins pipeline and deployment scripts                                    | `Jenkinsfile`, `scripts/`                 |
+| CI      | GitHub Actions workflow using the same build and test scripts              | `.github/`                                |
 
-## Run it locally
+Additional documentation is available in:
 
-Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Go 1.24+ (optional: the Go builds and tests fall back to Docker).
+* [Architecture](docs/architecture.md)
+* [API design, mappings and error catalogue](docs/api-design.md)
+* [Build and deployment](docs/deployment.md)
+* [Demo script](docs/demo-script.md)
+
+## Running locally
+
+### Prerequisites
+
+The following are required:
+
+* Docker and Docker Compose
+* JDK 17 or later
+* Maven
+* Go 1.24 or later
+
+The Go installation is optional for most users because the build and test scripts can fall back to Docker where necessary.
+
+WSO2 API Manager requires approximately 3 GB of memory in this setup.
+
+### Build and start the environment
+
+From the repository root:
 
 ```bash
-scripts/build.sh                                       # 4 CARs + APIM packages; runs 34 MI artifact tests
-docker compose --profile apim up -d --build --wait     # MySQL, mocks, MI, APIM (drop --profile apim for MI only)
-scripts/deploy-mi.sh dev                               # MI APIs on http://localhost:8290
-scripts/install-apictl.sh                              # apictl 4.6.4 into .tools/ (scripts find it there)
-scripts/deploy-apim.sh dev                             # 3 APIs + product on https://localhost:8243/jamii/...
-eval "$(scripts/apim-demo-consumer.sh | grep '^export ')"           # Dev Portal app, subscriptions, OAuth2 token, API key
-curl -sk "$GW/accounts/v1/0100000001/balance" -H "Authorization: Bearer $TOKEN"
-scripts/test.sh --all                                  # unit + Postman suite against MI + outage tests
+scripts/build.sh
+```
+
+This builds the Micro Integrator CAR files, packages the API Manager projects and runs the MI artifact tests.
+
+Start the complete environment:
+
+```bash
+docker compose --profile apim up -d --build --wait
+```
+
+If API Manager is not required, the profile can be omitted:
+
+```bash
+docker compose up -d --build --wait
+```
+
+Deploy the Micro Integrator applications:
+
+```bash
+scripts/deploy-mi.sh dev
+```
+
+The MI APIs are available locally through:
+
+```text
+http://localhost:8290
+```
+
+Install the API Controller CLI used by the deployment scripts:
+
+```bash
+scripts/install-apictl.sh
+```
+
+This installs `apictl` 4.6.4 under `.tools/`.
+
+Deploy the APIs and API Product to API Manager:
+
+```bash
+scripts/deploy-apim.sh dev
+```
+
+The gateway is then available under:
+
+```text
+https://localhost:8243/jamii/
+```
+
+The repository also contains a helper for setting up a demo consumer application, subscriptions and credentials:
+
+```bash
+eval "$(scripts/apim-demo-consumer.sh | grep '^export ')"
+```
+
+A sample request can then be made with:
+
+```bash
+curl -sk \
+  "$GW/accounts/v1/0100000001/balance" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Running the tests
+
+The complete test suite can be run with:
+
+```bash
+scripts/test.sh --all
+```
+
+This covers the MI tests, API-level tests, the failure scenarios for unavailable downstream services and the Bonus B event flows (`scripts/test.sh --events`).
+
+Example requests are also provided under:
+
+```text
+tests/integration/
+tests/negative/
+tests/postman/
+```
+
+To remove the environment:
+
+```bash
 scripts/cleanup.sh --all
 ```
 
-Ready-made requests: `tests/integration/*.http`, `tests/negative/*.http`, `tests/postman/`.
+---
 
-## Architecture decisions and trade-offs
+## Architecture and design decisions
 
-- **MI owns integration behaviour; APIM owns access.** MI does validation,
-  protocol mediation, timeouts and error mapping, so the APIs behave the
-  same with or without the gateway (CI tests both). APIM does OAuth2 and API
-  keys, throttling, the Developer Portal and two custom gateway policies
-  (correlation and consumer headers; security response headers).
-- **One error envelope** (`error.code`, `message`, `status`, `requestId`,
-  `correlationId`, `timestamp`), built in exactly one sequence. Build-time
-  tests fail if a fault sequence builds its own payload or any log mediator
-  could log a payload.
-- **Database:** an in-process `dataServiceCall` with a bound parameter. A
-  DB failure gives 503 `ACCOUNT_DB_UNAVAILABLE`, distinct from 404. The pool
-  recovers by itself when the DB returns (tested by stopping MySQL).
-- **Customer backend: JSONPlaceholder.** It is free and stable, returns a
-  realistic PII-bearing profile and a real 404, and sends plenty of CDN
-  headers that the proxy strips. Value added on top of pass-through:
-  injected `X-Correlation-ID`, stripped credential and internal headers in
-  both directions, `no-store`, a 5s timeout with circuit breaking, and
-  502/503/504 mapping.
-- **SOAP backend: DNE Online calculator.** No public loan SOAP service
-  exists, so the SOAP call computes the installment
-  (`Divide(requestedAmount, tenureMonths)`) and MI applies a 40%
-  debt-to-income rule. The service raises real .NET SOAP faults with stack
-  traces; they are logged and mapped (`soap:Client` → 422,
-  `soap:Server` → 502) and never returned.
-- **Contract-compatible local mocks** of both public backends make CI
-  deterministic and let tests trigger 500s, timeouts and faults. Switching
-  between mock and public backends is an environment variable.
-- **Security and throttling:** OAuth2 for accounts and customers (financial
-  data and PII); an API key for loan eligibility (no PII, server-to-server
-  callers). **Loan eligibility uses Bronze and 10KPerMin instead of
-  Gold/Silver and 50KPerMin, because each call costs a round trip to an
-  external, rate-limited SOAP service.**
-- **API Product** `JamiiCoreBankingProduct` bundles all three operations,
-  so first-party channels get one subscription. The APIs stay individually
-  subscribable.
-- **Tooling in Go:** a small helper CLI (`tools/`, built automatically into
-  `.tools/bin/jamii`) packages the CARs for `mvn clean install` and handles
-  Developer Portal onboarding and JSON parsing for the scripts. The CARs are
-  standard; writing them from a simple folder layout avoids depending on the
-  WSO2 Maven plugins and Integration Studio metadata. The trade-off is one
-  piece of custom tooling. The mocks and every test are also Go, so the
-  repo needs no Python.
-- **Deployments are all-or-nothing.** MI CARs are swapped in atomically,
-  verified through the management API, and rolled back on any faulty app.
-  APIM APIs are backed up, imported, and restored if any import fails. If
-  APIM fails after MI succeeded, the pipeline puts MI back too. Both
-  rollbacks were tested with deliberately broken artifacts.
+### Micro Integrator handles integration; API Manager handles API access
 
-## Bonus A: aggregation API
+The responsibilities are deliberately separated.
 
-`GET /customers/{customerId}/dashboard` calls the customer backend and the
-accounts database **in parallel** (Scatter-Gather) and merges them into one
-response: profile, accounts, `partial`, `errors`.
+**WSO2 Micro Integrator** is responsible for integration logic such as request validation, database access, protocol transformation, downstream timeouts and error mapping.
 
-**Decision: return partial data, not a failed response.** A dashboard is
-read-only and display-oriented, so showing the accounts while the profile
-service is down is more useful than an error. The failed section is `null`,
-`partial` is `true`, and `errors[]` says why, using the same codes as the
-single APIs (e.g. `ACCOUNT_DB_UNAVAILABLE`). Each branch has a 7s deadline,
-so one slow backend cannot hold the response. The whole response fails only
-when nothing useful is left: an unknown customer gives 404, and both
-sections failing gives 503 `DASHBOARD_UNAVAILABLE`. Details are in
-[API design](docs/api-design.md#bonus-a--customer-dashboard).
+**WSO2 API Manager** handles the API-facing concerns: authentication, throttling, subscriptions, the Developer Portal and gateway-level policies.
+
+This also means the MI APIs can be tested directly without going through the API gateway. The CI pipeline tests both paths.
+
+### Consistent error handling
+
+All three APIs use the same error structure:
+
+```json
+{
+  "error": {
+    "code": "ACCOUNT_DB_UNAVAILABLE",
+    "message": "The account service is temporarily unavailable",
+    "status": 503,
+    "requestId": "2f0b1f8d-...",
+    "correlationId": "abc-123",
+    "timestamp": "2026-10-07T15:30:00Z"
+  }
+}
+```
+
+The response is generated through a shared error sequence rather than being independently implemented by each API.
+
+The main error codes include:
+
+```text
+INVALID_REQUEST
+ACCOUNT_NOT_FOUND
+CUSTOMER_NOT_FOUND
+BACKEND_TIMEOUT
+BACKEND_UNAVAILABLE
+ACCOUNT_DB_UNAVAILABLE
+SOAP_FAULT
+INTERNAL_ERROR
+```
+
+The implementation also deliberately avoids logging complete account numbers, customer information, credentials or tokens.
+
+### Account balance API
+
+The account balance API uses MySQL through an MI data service.
+
+The account number is passed as a bound parameter rather than being concatenated into SQL. An unknown account produces a `404`, while a database connectivity or availability problem produces a separate `503` response.
+
+The database connection pool is allowed to recover automatically when the database becomes available again. This behaviour is covered by the failure tests.
+
+### Customer API
+
+The customer endpoint is implemented as a managed proxy over **JSONPlaceholder**.
+
+JSONPlaceholder was chosen because it is publicly available, simple to work with and provides a realistic REST response suitable for demonstrating mediation.
+
+The proxy adds value beyond simply forwarding the request. It:
+
+* Adds an `X-Correlation-ID` when one is not supplied.
+* Removes internal or credential-related headers.
+* Applies a five-second downstream timeout.
+* Prevents caching of the response.
+* Maps downstream failures to the common error format.
+
+For testing, the repository also includes a local implementation with the same contract. This makes CI predictable and allows the tests to deliberately simulate `500`, timeout and unavailable-backend scenarios.
+
+The backend can be selected through configuration, so the local mock can be used during development while the public service can be used for demonstration.
+
+### Loan eligibility API
+
+The loan eligibility endpoint accepts JSON and communicates with the **DNE Online calculator** through SOAP.
+
+The flow is:
+
+```text
+REST/JSON
+    ↓
+WSO2 Micro Integrator
+    ↓
+SOAP request
+    ↓
+DNE Online service
+    ↓
+SOAP response
+    ↓
+JSON response
+```
+
+There is no suitable public loan-eligibility SOAP service that directly provides the required behaviour, so the SOAP service is used to perform the underlying installment calculation. MI then applies the assignment's 40% debt-to-income rule to determine eligibility.
+
+SOAP faults are handled inside MI and converted to the common REST error format. The original SOAP fault XML, including any server-side details or stack traces, is never returned to the API consumer.
+
+A client-side SOAP fault is mapped to `422`, while a server-side SOAP fault is mapped to `502`.
+
+### Local mocks
+
+Both external services have contract-compatible local mocks.
+
+This is intentional rather than simply being a convenience for development. Depending on a public service during CI introduces an unnecessary external dependency and makes it difficult to reliably test failure scenarios.
+
+The local services can simulate:
+
+* Successful responses
+* `404` responses
+* `500` responses
+* Timeouts
+* SOAP faults
+
+The same MI configuration can switch between the local mocks and the public services using environment configuration.
+
+---
+
+## Security and throttling
+
+OAuth2 is used for the account and customer APIs because they expose financial information and customer data.
+
+The loan eligibility API uses an API key because the intended use case is a controlled server-to-server integration and the API does not expose customer-identifying information in its response.
+
+The APIs also use different throttling tiers.
+
+The loan eligibility API uses the lower `Bronze` / `10KPerMin` tier, while the other APIs use higher tiers. The reason is that every loan eligibility request results in an external SOAP call, making the backend more expensive and potentially subject to the limits of a third-party service.
+
+API Manager also applies custom gateway mediation policies for correlation and consumer headers, as well as security-related response headers.
+
+---
+
+## API Product
+
+The three APIs are grouped into:
+
+```text
+JamiiCoreBankingProduct
+```
+
+The product gives consuming applications a single subscription path while keeping the underlying APIs independently manageable.
+
+A typical consumer workflow is:
+
+```text
+Developer
+    ↓
+Developer Portal
+    ↓
+Create application
+    ↓
+Subscribe to JamiiCoreBankingProduct
+    ↓
+Obtain credentials
+    ↓
+Invoke the individual APIs
+```
+
+---
+
+## Deployment
+
+The repository uses a single Jenkins pipeline for all three integrations.
+
+The pipeline performs the following stages:
+
+```text
+Checkout
+   ↓
+Validate
+   ↓
+Build and test
+   ↓
+Package MI artifacts
+   ↓
+Package API Manager definitions
+   ↓
+Deploy to DEV
+   ↓
+Run smoke tests
+   ↓
+Approval
+   ↓
+Promote the same artifacts
+```
+
+Only the development environment is wired to a running deployment target. Production is modelled through the configuration and pipeline stages but is not connected to a live production environment.
+
+The deployment process is designed to fail rather than silently leave the environment partially updated.
+
+For MI, the CAR files are deployed and verified through the management API. If a deployment fails, the previous version is restored.
+
+For API Manager, existing API definitions are backed up before deployment. If an import fails, the previous state is restored.
+
+If API Manager deployment fails after the MI deployment has already succeeded, the pipeline also rolls the MI deployment back.
+
+These rollback paths have been tested using deliberately invalid artifacts.
+
+---
+
+## Bonus A – Customer dashboard
+
+The optional aggregation API has also been implemented:
+
+```http
+GET /customers/{customerId}/dashboard
+```
+
+The API retrieves the customer profile and account information in parallel using MI's Scatter-Gather pattern.
+
+A successful response contains:
+
+```text
+profile
+accounts
+partial
+errors
+```
+
+### Partial-response decision
+
+The dashboard is intended to support a read-only customer-facing view, so partial results are preferable to failing the entire request when one backend is temporarily unavailable.
+
+For example, if the customer service is unavailable but the account database is healthy:
+
+```json
+{
+  "profile": null,
+  "accounts": [...],
+  "partial": true,
+  "errors": [
+    {
+      "code": "BACKEND_UNAVAILABLE",
+      "message": "Customer service is unavailable"
+    }
+  ]
+}
+```
+
+Each branch has a seven-second timeout so that one slow backend does not unnecessarily hold the entire response.
+
+The API returns `404` when the customer does not exist. If both backend calls fail and there is no useful information to return, the API responds with:
+
+```text
+503 DASHBOARD_UNAVAILABLE
+```
+
+The complete response mapping is documented in [API Design](docs/api-design.md#bonus-a--customer-dashboard).
+
+---
+
+## Bonus B – Loan-application events (RabbitMQ)
+
+MI consumes `LoanApplicationSubmitted` events from RabbitMQ, transforms each one into a request to the Part 1c API (`POST /loans/eligibility`) and publishes the result as a `LoanEligibilityDecided` event.
+
+```text
+loan.applications ──▶ MI inbound endpoint ──▶ POST /loans/eligibility ──▶ loan.decisions
+        ▲   │                                    (Part 1c, unchanged)
+        │   └── transient failure: reject ──▶ loan.applications.retry (5 s TTL) ──┐
+        └──────────────────────────────────────────────────────────────────────┘
+                     permanent failure, or 3 retries used up ──▶ loan.applications.dlq
+```
+
+The broker topology (exchange, retry queue, dead-letter queue) is defined in `infrastructure/docker/rabbitmq/definitions.json`, and RabbitMQ starts with the rest of the environment.
+
+```bash
+scripts/publish-loan-event.sh tests/events/valid-application.json demo-001
+.tools/bin/jamii rabbit get --queue loan.decisions
+```
+
+The management UI is at `http://localhost:15672` (`jamii` / `jamii-dev-only`).
+
+### Malformed and unprocessable messages
+
+Nothing is silently dropped. Failures are split into two kinds:
+
+| Failure | Example | Handling |
+| ------- | ------- | -------- |
+| Permanent | body is not JSON, fails the event schema, or the API answers `4xx` (e.g. `422 LOAN_REQUEST_REJECTED`) | published straight to `loan.applications.dlq` with the **original body unchanged** and `x-error-code`, `x-error-reason` and `x-correlation-id` headers. Retrying cannot help, so it is not retried. |
+| Transient | the API answers `5xx`, times out, or the SOAP backend is down | the message is rejected and the broker routes it through the 5-second retry queue. After **3 retries** MI parks it in the same DLQ, and the broker's `x-death` headers record every attempt. |
+
+The consumer acknowledges a message only after it has been fully handled: decided, parked, or handed back to the broker for retry. If MI stops mid-message, RabbitMQ redelivers it.
+
+### How this differs from the request/response APIs
+
+| | Request/response APIs (Part 1) | Event consumer (Bonus B) |
+| --- | --- | --- |
+| Who sees an error | The caller, immediately, as an HTTP status in the common error format | Nobody is waiting. The outcome is a message on `loan.decisions` or `loan.applications.dlq`. |
+| Retries | The client's decision. MI never retries, which avoids duplicate side effects and keeps latency predictable. | MI and the broker own retries: a fixed back-off (5 s), bounded at 3, then parked. |
+| Bad input | `400`/`415`/`422`; the client corrects it and resends | The message is moved to the DLQ with the reason, for an operator or the producer to fix and republish. |
+| Backend outage | Fail fast (`503`/`504`, with circuit breaking) | Absorbed: the message waits in the queue and retry loop, and succeeds if the backend recovers within the retry window. |
+| Tracing | `X-Correlation-ID` header | the `x-correlation-id` AMQP header, propagated to the API call and to the decision or DLQ message |
+
+Reusing the Part 1c API keeps one set of validation and SOAP-fault rules for both entry points.
+
+---
 
 ## Assumptions
 
-- Fictional bank, fictional data. KES unless the account says otherwise;
-  amounts are `DECIMAL(18,2)`; account numbers are exactly 10 digits.
-- Eligibility is indicative: principal only, no interest or credit history.
-  The SOAP service is Int32, so the installment is in whole shillings
-  (half-to-even rounding by the service).
-- MI is reachable only from the gateway network in a real deployment, so MI
-  itself does no client authentication.
-- Only dev is wired up. Prod is modelled (`infrastructure/config/prod.env.example`,
-  an approval gate, promotion of the same archived artifacts) and runs as a
-  dry run.
-- Bonus A is done; Bonus B (message queue) was not attempted.
+The following assumptions were made for the assignment:
 
-## With more time
+* Jamii Savings and all customer/account data are fictional.
+* Amounts are represented in KES unless the account specifies another currency.
+* Account numbers contain exactly ten digits.
+* Monetary values use `DECIMAL(18,2)`.
+* Loan eligibility is indicative and does not perform a real credit-history check.
+* The eligibility calculation considers principal and tenure only.
+* The SOAP calculator uses integer values, so the installment is returned in whole shillings.
+* In a production architecture, MI would normally only be reachable from the API gateway network. Client authentication is therefore handled at the gateway rather than duplicated in MI.
+* Only the development environment is connected to an actual deployment target.
+* Production deployment is represented as a promotion/dry-run stage using the same archived artifacts.
+* Both bonus tasks (A and B) have been implemented.
+* Loan-application events are produced by another system; publishers only need the `loan.events` exchange and the `loan.applications` routing key.
 
-- Synapse unit tests on MI's unit-test server, plus contract tests that
-  check the MI responses against the OpenAPI definitions.
-- Real interest in the eligibility rule (a second SOAP call to `Multiply`
-  through the same template), and caching the decision per request hash.
-- Secrets from a vault; mutual TLS from the gateway to MI; JSON logs shipped
-  to a central platform; Prometheus metrics and alerts on the 5xx codes.
-- A real prod target (Kubernetes with Helm, MI image per release), and
-  per-API selective deploys driven by changed paths.
-- Bonus B: a RabbitMQ inbound endpoint for loan-application events that
-  reuses the loan template, with a dead-letter queue for malformed messages.
+---
+
+## Tooling
+
+A small Go-based helper under `tools/` supports the build and deployment scripts.
+
+The helper is built automatically into:
+
+```text
+.tools/bin/jamii
+```
+
+The Micro Integrator artifacts remain standard WSO2 CAR files. The custom tooling mainly removes unnecessary dependence on Integration Studio metadata and simplifies packaging and API Manager automation.

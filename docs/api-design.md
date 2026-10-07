@@ -256,3 +256,74 @@ Custom gateway policies (`apim/policies`), attached to all three APIs:
 
 `scripts/apim-demo-consumer.sh` (Go: `tools/apimconsumer`) does steps 2–4 through the Developer Portal
 REST API. CI uses it before running the test suite through the gateway.
+
+## Bonus B – loan-application events
+
+Asynchronous counterpart of `POST /loans/eligibility`, over RabbitMQ.
+
+| Item | Value |
+|------|-------|
+| Consumes | exchange `loan.events`, queue `loan.applications` (routing key `loan.applications`) |
+| Publishes | `loan.decisions` (decisions), `loan.applications.dlq` (unprocessable events) |
+| Retry | `loan.applications.retry`: 5 s TTL, then back to `loan.applications`; at most 3 retries |
+| Tracing | `x-correlation-id` AMQP header (generated if absent) → API call → output message |
+
+**In: `LoanApplicationSubmitted`** (`LoanApplicationEventSchema`)
+
+```json
+{
+  "eventType": "LoanApplicationSubmitted",
+  "applicationId": "APP-1001",
+  "submittedAt": "2026-10-07T10:00:00Z",
+  "applicant": { "customerId": "1", "monthlyIncome": 120000, "existingMonthlyDebt": 15000 },
+  "loan": { "amount": 500000, "tenureMonths": 12, "currency": "KES" }
+}
+```
+
+Mapped to the Part 1c request: `applicant.customerId → customerId`,
+`applicant.monthlyIncome → monthlyIncome`, `applicant.existingMonthlyDebt →
+existingMonthlyDebt` (default 0), `loan.amount → requestedAmount`,
+`loan.tenureMonths → tenureMonths`.
+
+**Out: `LoanEligibilityDecided`** on `loan.decisions` (headers `x-correlation-id`, `x-application-id`)
+
+```json
+{
+  "eventType": "LoanEligibilityDecided",
+  "applicationId": "APP-1001",
+  "customerId": "1",
+  "eligible": false,
+  "decision": "NOT_ELIGIBLE",
+  "reason": "Monthly installment exceeds 40% of monthly income after existing debt.",
+  "loan": { "requestedAmount": 500000, "tenureMonths": 12, "monthlyInstallment": 41667,
+            "maxAffordableInstallment": 33000, "currency": "KES" },
+  "eligibilityRequestId": "5960b2a5-436c-40a3-97b4-b26e1a077b78",
+  "correlationId": "demo-evt-0001",
+  "decidedAt": "2026-10-07T18:33:22.958Z"
+}
+```
+
+**Dead letters** on `loan.applications.dlq`: the original body, unchanged.
+
+| `x-error-code` | Cause | Retried? |
+|----------------|-------|----------|
+| `MALFORMED_EVENT` | body is not JSON | no |
+| `INVALID_EVENT` | fails `LoanApplicationEventSchema` | no |
+| API error code, e.g. `LOAN_REQUEST_REJECTED`, `INVALID_REQUEST` | the eligibility API answered `4xx` | no |
+| *(none; `x-death` history instead)* | 3 retries of a transient failure (API `5xx`, timeout, backend down) used up; parked by MI | yes, 3 times |
+
+How it is built, and what testing showed:
+
+- The inbound endpoint reads bodies as `text/plain`, so a malformed JSON
+  body can be captured byte-for-byte for the DLQ; `loan-event-process`
+  parses it explicitly.
+- The call to the API is **blocking**, so the acknowledgement waits for the
+  outcome. A blocking call turns every non-2xx into a fault by default, which
+  would have made a `422` look transient; `non.error.http.status.codes` lets
+  the API's statuses reach the classification switch instead.
+- Retries use the broker, not MI threads: a rejected message is
+  dead-lettered to the retry queue and comes back after its TTL. MI's
+  `rabbitmq.message.max.dead.lettered.count` reads `x-death` and parks the
+  message once the count is exceeded (the value is 2, because MI parks when
+  the count is *greater than* it; that gives the first attempt plus 3 retries,
+  as verified by `scripts/test.sh --events`).
