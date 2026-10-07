@@ -1,0 +1,12 @@
+{
+  "name": "jamii-loan-eligibility-soap-mock",
+  "version": "1.0.0",
+  "description": "Offline, contract-compatible stand-in for the DNE Online SOAP calculator",
+  "main": "src/server.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test src/"
+  },
+  "engines": { "node": ">=20" }
+}
