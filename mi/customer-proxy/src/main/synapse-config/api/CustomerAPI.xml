@@ -71,7 +71,7 @@
                 <property name="event" value="BACKEND_RESPONSE"/>
                 <property name="api" expression="get-property('API_NAME')"/>
                 <property name="backendStatus" expression="$axis2:HTTP_SC"/>
-                <property name="latencyMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START'))"/>
+                <property name="latencyMs" expression="string(number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START')))"/>
                 <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
             </log>
 

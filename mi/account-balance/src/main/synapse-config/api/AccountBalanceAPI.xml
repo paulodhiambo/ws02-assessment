@@ -54,7 +54,7 @@
                 <property name="api" expression="get-property('API_NAME')"/>
                 <property name="backend" value="AccountsDataService.getAccountByNumber"/>
                 <property xmlns:acc="http://ds.jamiisavings.co.ke/accounts" name="found" expression="boolean(//acc:account)"/>
-                <property name="latencyMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START'))"/>
+                <property name="latencyMs" expression="string(number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START')))"/>
                 <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
             </log>
 

@@ -12,7 +12,7 @@
         <property name="subject" expression="get-property('LOG_SUBJECT')"/>
         <property name="httpStatus" expression="$axis2:HTTP_SC"/>
         <property name="errorCode" expression="get-property('ERROR_CODE_APP')"/>
-        <property name="durationMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('REQUEST_START'))"/>
+        <property name="durationMs" expression="string(number(get-property('SYSTEM_TIME')) - number(get-property('REQUEST_START')))"/>
         <property name="requestId" expression="get-property('REQUEST_ID')"/>
         <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
     </log>
