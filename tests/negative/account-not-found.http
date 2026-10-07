@@ -1,0 +1,8 @@
+@base = http://localhost:8290
+
+### Unknown account (expect 404 ACCOUNT_NOT_FOUND, common error envelope)
+GET {{base}}/accounts/0100000099/balance
+
+### Database down (expect 503 ACCOUNT_DB_UNAVAILABLE, distinct from 404)
+# docker compose stop accounts-db   (then: docker compose start accounts-db)
+GET {{base}}/accounts/0100000001/balance

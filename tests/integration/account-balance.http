@@ -1,0 +1,26 @@
+### Account balance – happy paths
+# Works with the VS Code REST Client or JetBrains HTTP Client.
+# Direct to MI by default; switch @base to go through the APIM gateway
+# (then fill @token from scripts/apim-demo-consumer.py).
+@mi = http://localhost:8290
+@gw = https://localhost:8243/jamii
+@base = {{mi}}/accounts
+# @base = {{gw}}/accounts/v1
+@token = paste-oauth2-access-token
+
+### ACTIVE account, KES (expect 200)
+GET {{base}}/0100000001/balance
+Authorization: Bearer {{token}}
+X-Correlation-ID: demo-acc-0001
+
+### DORMANT account (expect 200, status DORMANT)
+GET {{base}}/0100000003/balance
+Authorization: Bearer {{token}}
+
+### CLOSED account with zero balance (expect 200, amount 0.00)
+GET {{base}}/0100000004/balance
+Authorization: Bearer {{token}}
+
+### USD account (expect 200, currency USD)
+GET {{base}}/0100000006/balance
+Authorization: Bearer {{token}}

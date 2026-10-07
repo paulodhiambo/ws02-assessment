@@ -1,0 +1,720 @@
+{
+  "info": {
+    "_postman_id": "d7bc704f-9c31-53b8-b11b-25cc05d8fc94",
+    "name": "Jamii Savings – WSO2 assignment",
+    "description": "Integration tests for the three APIs. Point accountsUrl/customersUrl/loansUrl at MI (default) or at the APIM gateway (set accessToken/apiKey from scripts/apim-demo-consumer.py). Run with scripts/test.sh --integration.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "accountsUrl",
+      "value": "http://localhost:8290/accounts"
+    },
+    {
+      "key": "customersUrl",
+      "value": "http://localhost:8290/customers"
+    },
+    {
+      "key": "loansUrl",
+      "value": "http://localhost:8290/loans"
+    },
+    {
+      "key": "accessToken",
+      "value": "not-needed-for-direct-mi-calls"
+    },
+    {
+      "key": "apiKey",
+      "value": "not-needed-for-direct-mi-calls"
+    }
+  ],
+  "item": [
+    {
+      "name": "accounts",
+      "item": [
+        {
+          "name": "balance - active account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const b = pm.response.json();",
+                  "pm.test('spec envelope', () => {",
+                  "  pm.expect(b).to.have.all.keys('accountNumber', 'status', 'balance', 'requestId', 'timestamp');",
+                  "  pm.expect(b.status).to.be.oneOf(['ACTIVE', 'DORMANT', 'CLOSED']);",
+                  "  pm.expect(b.balance.amount).to.be.a('number');",
+                  "  pm.expect(b.balance.currency).to.eql('KES');",
+                  "  pm.expect(new Date(b.timestamp).toString()).to.not.eql('Invalid Date');",
+                  "});",
+                  "pm.test('caller correlation id kept', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.match(/postman-acc-0001$/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "postman-acc-0001"
+              }
+            ],
+            "url": "{{accountsUrl}}/0100000001/balance"
+          }
+        },
+        {
+          "name": "balance - dormant account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "pm.test('DORMANT', () => pm.expect(pm.response.json().status).to.eql('DORMANT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{accountsUrl}}/0100000003/balance"
+          }
+        },
+        {
+          "name": "balance - closed account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "pm.test('CLOSED, zero', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('CLOSED'); pm.expect(b.balance.amount).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{accountsUrl}}/0100000004/balance"
+          }
+        }
+      ]
+    },
+    {
+      "name": "customers",
+      "item": [
+        {
+          "name": "customer - known",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "pm.test('body passed through', () => pm.expect(pm.response.json().id).to.eql(1));",
+                  "pm.test('no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));",
+                  "pm.test('backend headers stripped', () => { pm.expect(pm.response.headers.has('X-Powered-By')).to.be.false; pm.expect(pm.response.headers.has('X-Backend-Node')).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "loans",
+      "item": [
+        {
+          "name": "eligibility - not eligible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const b = pm.response.json();",
+                  "pm.test('decision', () => { pm.expect(b.eligible).to.be.false; pm.expect(b.decision).to.eql('NOT_ELIGIBLE'); });",
+                  "pm.test('mapping', () => { pm.expect(b.loan.monthlyInstallment).to.eql(41667); pm.expect(b.loan.maxAffordableInstallment).to.eql(33000); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customerId\": \"1\", \"monthlyIncome\": 120000, \"existingMonthlyDebt\": 15000, \"requestedAmount\": 500000, \"tenureMonths\": 12}"
+            }
+          }
+        },
+        {
+          "name": "eligibility - eligible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const b = pm.response.json();",
+                  "pm.test('decision', () => { pm.expect(b.eligible).to.be.true; pm.expect(b.decision).to.eql('ELIGIBLE'); });",
+                  "pm.test('mapping', () => { pm.expect(b.loan.monthlyInstallment).to.eql(25000); pm.expect(b.loan.maxAffordableInstallment).to.eql(48000); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customerId\": \"1\", \"monthlyIncome\": 120000, \"requestedAmount\": 300000, \"tenureMonths\": 12}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative",
+      "item": [
+        {
+          "name": "account - not found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code ACCOUNT_NOT_FOUND', () => pm.expect(body.error.code).to.eql('ACCOUNT_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{accountsUrl}}/0100000099/balance"
+          }
+        },
+        {
+          "name": "account - malformed number",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code INVALID_ACCOUNT_NUMBER', () => pm.expect(body.error.code).to.eql('INVALID_ACCOUNT_NUMBER'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{accountsUrl}}/12ab/balance"
+          }
+        },
+        {
+          "name": "customer - malformed id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code INVALID_CUSTOMER_ID', () => pm.expect(body.error.code).to.eql('INVALID_CUSTOMER_ID'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/abc"
+          }
+        },
+        {
+          "name": "customer - not found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code CUSTOMER_NOT_FOUND', () => pm.expect(body.error.code).to.eql('CUSTOMER_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/4242"
+          }
+        },
+        {
+          "name": "loan - invalid JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code INVALID_REQUEST', () => pm.expect(body.error.code).to.eql('INVALID_REQUEST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customerId\": \"1\", \"monthlyIncome\": 1200"
+            }
+          }
+        },
+        {
+          "name": "loan - schema violation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code INVALID_REQUEST', () => pm.expect(body.error.code).to.eql('INVALID_REQUEST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customerId\": \"1\", \"monthlyIncome\": -5, \"requestedAmount\": 3000}"
+            }
+          }
+        },
+        {
+          "name": "loan - wrong content type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 415', () => pm.response.to.have.status(415));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code UNSUPPORTED_MEDIA_TYPE', () => pm.expect(body.error.code).to.eql('UNSUPPORTED_MEDIA_TYPE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "hello"
+            }
+          }
+        },
+        {
+          "name": "loan - SOAP client fault",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code LOAN_REQUEST_REJECTED', () => pm.expect(body.error.code).to.eql('LOAN_REQUEST_REJECTED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{loansUrl}}/eligibility",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customerId\": \"1\", \"monthlyIncome\": 120000, \"requestedAmount\": 3000000000, \"tenureMonths\": 12}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mock-backend",
+      "description": "Needs MI pointed at the local customer mock (CUSTOMER_BACKEND_URL=http://customer-mock:3000).",
+      "item": [
+        {
+          "name": "customer - backend 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 502', () => pm.response.to.have.status(502));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code CUSTOMER_BACKEND_ERROR', () => pm.expect(body.error.code).to.eql('CUSTOMER_BACKEND_ERROR'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/500"
+          }
+        },
+        {
+          "name": "customer - backend timeout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 504', () => pm.response.to.have.status(504));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code CUSTOMER_BACKEND_TIMEOUT', () => pm.expect(body.error.code).to.eql('CUSTOMER_BACKEND_TIMEOUT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/999"
+          }
+        }
+      ]
+    }
+  ]
+}

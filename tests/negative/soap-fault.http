@@ -1,0 +1,15 @@
+@base = http://localhost:8290
+
+### SOAP Client fault: amount beyond Int32 (expect 422 LOAN_REQUEST_REJECTED; no SOAP XML or stack trace in the body)
+POST {{base}}/loans/eligibility
+Content-Type: application/json
+
+{"customerId": "1", "monthlyIncome": 120000, "requestedAmount": 3000000000, "tenureMonths": 12}
+
+### SOAP service down (expect 503 LOAN_SERVICE_UNAVAILABLE or 504 LOAN_SERVICE_TIMEOUT)
+# LOAN_SOAP_BACKEND_URL=http://soap-mock:8088/calculator.asmx docker compose up -d mi
+# docker compose stop soap-mock
+POST {{base}}/loans/eligibility
+Content-Type: application/json
+
+{"customerId": "1", "monthlyIncome": 120000, "requestedAmount": 300000, "tenureMonths": 12}

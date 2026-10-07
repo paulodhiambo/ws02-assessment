@@ -1,0 +1,16 @@
+# Run MI against the local mock so failures can be triggered:
+#   CUSTOMER_BACKEND_URL=http://customer-mock:3000 docker compose up -d mi
+@base = http://localhost:8290
+
+### Backend answers 500 (expect 502 CUSTOMER_BACKEND_ERROR)
+GET {{base}}/customers/500
+
+### Backend too slow: mock sleeps 15s, endpoint timeout is 5s (expect 504 CUSTOMER_BACKEND_TIMEOUT after ~5s)
+GET {{base}}/customers/999
+
+### Unknown customer (expect 404 CUSTOMER_NOT_FOUND)
+GET {{base}}/customers/4242
+
+### Backend down (expect 503 CUSTOMER_BACKEND_UNAVAILABLE)
+# docker compose stop customer-mock   (then: docker compose start customer-mock)
+GET {{base}}/customers/1

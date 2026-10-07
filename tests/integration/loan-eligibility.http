@@ -1,0 +1,43 @@
+### Loan eligibility – happy paths
+@mi = http://localhost:8290
+@gw = https://localhost:8243/jamii
+@base = {{mi}}/loans
+# @base = {{gw}}/loans/v1
+@apikey = paste-api-key
+
+### Not eligible: 500,000 / 12 = 41,667 > 40% x 120,000 - 15,000 = 33,000 (expect 200, eligible=false)
+POST {{base}}/eligibility
+Content-Type: application/json
+apikey: {{apikey}}
+
+{
+  "customerId": "1",
+  "monthlyIncome": 120000,
+  "existingMonthlyDebt": 15000,
+  "requestedAmount": 500000,
+  "tenureMonths": 12
+}
+
+### Eligible: 300,000 / 12 = 25,000 <= 48,000 (expect 200, eligible=true)
+POST {{base}}/eligibility
+Content-Type: application/json
+apikey: {{apikey}}
+
+{
+  "customerId": "1",
+  "monthlyIncome": 120000,
+  "requestedAmount": 300000,
+  "tenureMonths": 12
+}
+
+### Decimal amount and half-to-even rounding by the SOAP service (expect 200)
+POST {{base}}/eligibility
+Content-Type: application/json
+apikey: {{apikey}}
+
+{
+  "customerId": "2",
+  "monthlyIncome": 123457,
+  "requestedAmount": 300000.49,
+  "tenureMonths": 12
+}

@@ -1,0 +1,23 @@
+### Customer proxy – happy paths
+@mi = http://localhost:8290
+@gw = https://localhost:8243/jamii
+@base = {{mi}}/customers
+# @base = {{gw}}/customers/v1
+@token = paste-oauth2-access-token
+
+### Known customer (expect 200, body passed through, Cache-Control: no-store)
+GET {{base}}/1
+Authorization: Bearer {{token}}
+
+### Caller-supplied correlation id is kept and echoed back
+GET {{base}}/2
+Authorization: Bearer {{token}}
+X-Correlation-ID: demo-cust-0002
+
+### Internal headers are stripped before the backend call
+# Use the local mock backend and watch `docker compose logs -f customer-mock`:
+# X-Internal-Debug and Authorization do not arrive, X-Correlation-ID does.
+GET {{base}}/3
+Authorization: Bearer {{token}}
+X-Internal-Debug: true
+X-Internal-User-Id: teller-42

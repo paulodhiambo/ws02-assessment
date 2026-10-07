@@ -1,0 +1,31 @@
+@base = http://localhost:8290
+
+### Account number not 10 digits (expect 400 INVALID_ACCOUNT_NUMBER)
+GET {{base}}/accounts/12ab/balance
+
+### Customer id not numeric (expect 400 INVALID_CUSTOMER_ID)
+GET {{base}}/customers/abc
+
+### Body is not valid JSON (expect 400 INVALID_REQUEST, not 500)
+POST {{base}}/loans/eligibility
+Content-Type: application/json
+
+{"customerId": "1", "monthlyIncome": 1200
+
+### Schema violation: negative income, missing tenure (expect 400 INVALID_REQUEST)
+POST {{base}}/loans/eligibility
+Content-Type: application/json
+
+{"customerId": "1", "monthlyIncome": -5, "requestedAmount": 3000}
+
+### Unknown field (expect 400: additionalProperties is false)
+POST {{base}}/loans/eligibility
+Content-Type: application/json
+
+{"customerId": "1", "monthlyIncome": 1000, "requestedAmount": 3000, "tenureMonths": 12, "salary": 5}
+
+### Wrong content type (expect 415 UNSUPPORTED_MEDIA_TYPE)
+POST {{base}}/loans/eligibility
+Content-Type: text/plain
+
+hello
