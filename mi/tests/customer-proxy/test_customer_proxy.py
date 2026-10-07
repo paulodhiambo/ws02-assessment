@@ -17,7 +17,8 @@ class CustomerApiTest(unittest.TestCase):
         return {h.get("name").lower() for h in self.api.iter(f"{S}header") if h.get("action") == "remove"}
 
     def test_credentials_and_internal_headers_are_stripped(self):
-        for header in ("authorization", "cookie", "apikey", "x-jwt-assertion", "x-internal-user-id", "x-internal-debug"):
+        for header in ("authorization", "cookie", "apikey", "x-jwt-assertion", "x-internal-user-id", "x-internal-debug",
+                       "accept-encoding"):
             self.assertIn(header, self.removed_headers())
 
     def test_backend_response_headers_are_dropped_on_success(self):
@@ -27,6 +28,11 @@ class CustomerApiTest(unittest.TestCase):
         self.assertTrue(removed)
         cache = [h for h in success.iter(f"{S}header") if h.get("name") == "Cache-Control"]
         self.assertEqual("no-store", cache[0].get("value"))
+
+    def test_success_body_is_not_rebuilt(self):
+        """Overriding messageType would force MI to parse and re-serialise the body."""
+        success = self.api.find(".//s:switch/s:case[@regex='200']", NS)
+        self.assertEqual([], properties_set(success, "messageType"))
 
     def test_backend_url_comes_from_environment(self):
         prop = [p for p in self.api.iter(f"{S}property") if p.get("name") == "uri.var.customerBackendUrl"][0]
@@ -40,6 +46,8 @@ class CustomerApiTest(unittest.TestCase):
         self.assertEqual("fault", timeout.find("s:responseAction", NS).text)
 
     def test_fault_mapping(self):
+        mapping_stage = self.fault.find("s:filter[@regex='MAPPING']", NS)
+        self.assertEqual(["502"], properties_set(mapping_stage, "ERROR_STATUS"))
         cases = {c.get("regex"): properties_set(c, "ERROR_STATUS")[0] for c in self.fault.iter(f"{S}case")}
         self.assertEqual("504", cases["101504"])
         unavailable = re.compile(next(r for r in cases if r != "101504"))

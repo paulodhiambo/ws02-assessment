@@ -7,6 +7,7 @@
     101504              timeout                  -> 504 LOAN_SERVICE_TIMEOUT
     101xxx, 303xxx      connection failures,
                         endpoint suspended       -> 503 LOAN_SERVICE_UNAVAILABLE
+    STAGE=MAPPING       unreadable SOAP response -> 502 LOAN_SERVICE_ERROR
     anything else                                -> 500 INTERNAL_ERROR
 -->
 <sequence name="loan-fault" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
@@ -26,6 +27,14 @@
             <property name="ERROR_MSG_APP" value="Request body is not valid JSON." scope="default" type="STRING"/>
         </then>
         <else>
+            <filter source="get-property('STAGE')" regex="MAPPING">
+                <then>
+                    <property name="ERROR_STATUS" value="502" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="LOAN_SERVICE_ERROR" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="The eligibility service returned an unreadable response." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </then>
+            </filter>
             <switch source="get-property('ERROR_CODE')">
                 <case regex="101504">
                     <property name="ERROR_STATUS" value="504" scope="default" type="STRING"/>

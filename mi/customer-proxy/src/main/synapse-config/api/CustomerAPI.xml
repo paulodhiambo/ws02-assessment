@@ -50,6 +50,9 @@
             <header name="X-Internal-Debug" scope="transport" action="remove"/>
             <!-- Do not hand end-customer IPs to a third-party backend. -->
             <header name="X-Forwarded-For" scope="transport" action="remove"/>
+            <!-- All backend response headers (incl. Content-Encoding) are dropped below,
+                 so ask for an uncompressed body or the client would get unlabelled gzip. -->
+            <header name="Accept-Encoding" scope="transport" action="remove"/>
             <header name="Accept" scope="transport" value="application/json"/>
             <header name="X-Request-ID" scope="transport" expression="get-property('REQUEST_ID')"/>
 
@@ -80,8 +83,7 @@
                     <!-- Inbound header hygiene: drop Server, X-Powered-By, cookies, CDN headers, etc. -->
                     <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
                     <header name="Cache-Control" scope="transport" value="no-store"/>
-                    <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
-                    <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+                    <!-- Content type is left as the backend sent it, so the body streams through unparsed. -->
                     <sequence key="response-logging"/>
                     <respond/>
                 </case>

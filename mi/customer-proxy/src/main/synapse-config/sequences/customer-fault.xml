@@ -6,6 +6,8 @@
     101504              timeout                       -> 504 CUSTOMER_BACKEND_TIMEOUT
     101xxx, 303xxx      connection refused/closed,
                         endpoint suspended            -> 503 CUSTOMER_BACKEND_UNAVAILABLE
+    failure while reading the backend's response
+    (STAGE=MAPPING, e.g. body stream cut off)         -> 502 CUSTOMER_BACKEND_ERROR
     anything else                                     -> 500 INTERNAL_ERROR
 -->
 <sequence name="customer-fault" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
@@ -18,6 +20,14 @@
         <property name="errorMessage" expression="get-property('ERROR_MESSAGE')"/>
         <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
     </log>
+    <filter source="get-property('STAGE')" regex="MAPPING">
+        <then>
+            <property name="ERROR_STATUS" value="502" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="CUSTOMER_BACKEND_ERROR" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="The customer service returned an unreadable response." scope="default" type="STRING"/>
+            <sequence key="common-error"/>
+        </then>
+    </filter>
     <switch source="get-property('ERROR_CODE')">
         <case regex="101504">
             <property name="ERROR_STATUS" value="504" scope="default" type="STRING"/>
