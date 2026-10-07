@@ -1,0 +1,64 @@
+type: api
+version: v4.6.0
+data:
+  name: JamiiAccountsAPI
+  description: Read-only account balance lookup for Jamii Savings (backed by WSO2 MI AccountBalanceAPI).
+  context: /jamii/accounts
+  version: v1
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isDefaultVersion: true
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+    - https
+  tags:
+    - jamii
+    - accounts
+    - banking
+  # Subscription tiers offered in the Developer Portal.
+  policies:
+    - Gold
+    - Silver
+  # API-level ceiling across all subscribers.
+  apiThrottlingPolicy: 50KPerMin
+  # OAuth2 only: account data is sensitive, tokens are short-lived and scoped to an application.
+  securityScheme:
+    - oauth2
+    - oauth_basic_auth_api_key_mandatory
+  authorizationHeader: Authorization
+  visibility: PUBLIC
+  businessInformation:
+    businessOwner: Jamii Savings Digital Channels
+    technicalOwner: Jamii Savings Integrations Team
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://mi:8290/accounts
+    sandbox_endpoints:
+      url: http://mi:8290/accounts
+  endpointImplementationType: ENDPOINT
+  operations:
+    - target: /{accountNumber}/balance
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: 50KPerMin
+      scopes: []
+      operationPolicies:
+        request: []
+        response: []
+        fault: []
+  apiPolicies:
+    request:
+      - policyName: jamiiCorrelation
+        policyVersion: v1
+        parameters: {}
+    response:
+      - policyName: jamiiSecurityHeaders
+        policyVersion: v1
+        parameters: {}
+    fault:
+      - policyName: jamiiSecurityHeaders
+        policyVersion: v1
+        parameters: {}

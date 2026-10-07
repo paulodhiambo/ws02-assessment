@@ -1,0 +1,7 @@
+<filter source="$trp:X-Correlation-ID" regex="[A-Za-z0-9._\-]{8,64}">
+    <then/>
+    <else>
+        <property name="X-Correlation-ID" scope="transport" expression="concat('gw-', substring-after(get-property('MessageID'), 'urn:uuid:'))"/>
+    </else>
+</filter>
+<property name="X-Consumer-App" scope="transport" expression="get-property('api.ut.application.name')"/>

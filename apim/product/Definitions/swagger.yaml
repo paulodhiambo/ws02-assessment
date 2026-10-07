@@ -1,0 +1,512 @@
+openapi: 3.0.1
+info:
+  title: Jamii Core Banking (API Product)
+  description: >-
+    Merged definition of the operations bundled in the Jamii Core Banking
+    product. Exported from API Manager, which generates it from the three
+    API definitions in apim/*-api/Definitions; regenerate rather than edit.
+  version: 1.0.0
+servers:
+ -
+  url: /
+security:
+ -
+  default: []
+paths:
+  /{accountNumber}/balance:
+    get:
+      summary: Get the balance of an account
+      description: Returns the current status and balance of a single account.
+      operationId: getAccountBalance
+      parameters:
+       -
+        name: accountNumber
+        in: path
+        description: 10-digit account number.
+        required: true
+        style: simple
+        explode: false
+        schema:
+          pattern: "^[0-9]{10}$"
+          type: string
+          example: "0100000001"
+       -
+        $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: Account found.
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/X-Correlation-ID"
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountBalance"
+              example:
+                accountNumber: "0100000001"
+                status: ACTIVE
+                balance:
+                  amount: 152340.75
+                  currency: KES
+                requestId: 10d00c1e-fa31-4e58-9802-49ab7e69bcbf
+                timestamp: 2026-10-07T16:29:32.347Z
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No account with this number (`ACCOUNT_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: ACCOUNT_NOT_FOUND
+                  message: No account exists with the given account number.
+                  status: 404
+                requestId: 82ae2640-6e70-4f25-b4c5-e062b0f649ed
+                correlationId: demo-corr-0001
+                timestamp: 2026-10-07T16:29:32.389Z
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          description: The accounts database is unavailable (`ACCOUNT_DB_UNAVAILABLE`). Safe to retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: 50KPerMin
+  /{customerId}:
+    get:
+      summary: Get a customer profile
+      description: Contains PII. Responses are sent with `Cache-Control no-store`.
+      operationId: getCustomer
+      parameters:
+       -
+        name: customerId
+        in: path
+        description: Positive integer customer id.
+        required: true
+        style: simple
+        explode: false
+        schema:
+          pattern: "^[1-9][0-9]{0,8}$"
+          type: string
+          example: "1"
+       -
+        name: X-Correlation-ID
+        in: header
+        description: Optional caller correlation id. Generated when absent.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Customer found.
+          headers:
+            X-Correlation-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+            X-Request-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                format: uuid
+            Cache-Control:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "400":
+          description: '`INVALID_CUSTOMER_ID`'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid access token (returned by the API gateway).
+        "404":
+          description: '`CUSTOMER_NOT_FOUND`'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Subscription tier quota exceeded (returned by the API gateway).
+        "502":
+          description: "`CUSTOMER_BACKEND_ERROR`: the customer system answered with an unexpected status."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "`CUSTOMER_BACKEND_UNAVAILABLE`: connection refused or circuit open. Safe to retry."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: "`CUSTOMER_BACKEND_TIMEOUT`: no response within 5 seconds."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: 50KPerMin
+  /eligibility:
+    post:
+      summary: Check whether a customer can afford a loan
+      operationId: checkLoanEligibility
+      parameters:
+       -
+        name: X-Correlation-ID
+        in: header
+        description: Optional caller correlation id. Generated when absent.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EligibilityRequest"
+            example:
+              customerId: "1"
+              monthlyIncome: 120000
+              existingMonthlyDebt: 15000
+              requestedAmount: 500000
+              tenureMonths: 12
+        required: true
+      responses:
+        "200":
+          description: Decision made (eligible or not).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EligibilityResponse"
+              example:
+                customerId: "1"
+                eligible: false
+                decision: NOT_ELIGIBLE
+                reason: Monthly installment exceeds 40% of monthly income after existing debt.
+                loan:
+                  requestedAmount: 500000
+                  tenureMonths: 12
+                  monthlyInstallment: 41667
+                  maxAffordableInstallment: 33000
+                  currency: KES
+                requestId: 1d1152c0-fe1b-4dc4-9b98-7cd7ca449da4
+                timestamp: 2026-10-07T16:40:38.973Z
+        "400":
+          description: "`INVALID_REQUEST`: malformed JSON or schema violation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid API key (returned by the API gateway).
+        "415":
+          description: "`UNSUPPORTED_MEDIA_TYPE`: Content-Type is not application/json."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`LOAN_REQUEST_REJECTED`: the eligibility service rejected the parameters (SOAP Client fault), e.g. an amount above 2,147,483,647."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Quota exceeded (returned by the API gateway).
+        "502":
+          description: "`LOAN_SERVICE_ERROR`: SOAP Server fault or unexpected SOAP response."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: '`LOAN_SERVICE_UNAVAILABLE`'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: "`LOAN_SERVICE_TIMEOUT`: no response within 10 seconds."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+       -
+        api_key: []
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: 10KPerMin
+components:
+  schemas:
+    EligibilityRequest:
+      required:
+       - customerId
+       - monthlyIncome
+       - requestedAmount
+       - tenureMonths
+      type: object
+      properties:
+        customerId:
+          pattern: "^[A-Za-z0-9-]{1,20}$"
+          type: string
+        monthlyIncome:
+          maximum: 1000000000
+          minimum: 0
+          exclusiveMinimum: true
+          type: number
+          description: Gross monthly income in KES.
+        existingMonthlyDebt:
+          maximum: 1000000000
+          minimum: 0
+          type: number
+          description: Existing monthly loan repayments in KES.
+          default: 0
+        requestedAmount:
+          maximum: 1000000000000
+          minimum: 0
+          exclusiveMinimum: true
+          type: number
+          description: Principal in KES. Rounded to whole shillings for the calculation.
+        tenureMonths:
+          maximum: 360
+          minimum: 1
+          type: integer
+        currency:
+          type: string
+          enum:
+           - KES
+      additionalProperties: false
+    Error:
+      required:
+       - correlationId
+       - error
+       - requestId
+       - timestamp
+      type: object
+      properties:
+        error:
+          required:
+           - code
+           - message
+           - status
+          type: object
+          properties:
+            code:
+              type: string
+              example: CUSTOMER_NOT_FOUND
+            message:
+              type: string
+            status:
+              type: integer
+        requestId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+      description: Error envelope shared by every Jamii Savings API.
+    EligibilityResponse:
+      required:
+       - customerId
+       - decision
+       - eligible
+       - loan
+       - reason
+       - requestId
+       - timestamp
+      type: object
+      properties:
+        customerId:
+          type: string
+        eligible:
+          type: boolean
+        decision:
+          type: string
+          enum:
+           - ELIGIBLE
+           - NOT_ELIGIBLE
+        reason:
+          type: string
+        loan:
+          type: object
+          properties:
+            requestedAmount:
+              type: number
+            tenureMonths:
+              type: integer
+            monthlyInstallment:
+              type: number
+              description: "round_half_even(requestedAmount / tenureMonths), computed by the SOAP service. Principal only, no interest."
+            maxAffordableInstallment:
+              type: number
+              description: 0.4 * monthlyIncome - existingMonthlyDebt
+            currency:
+              type: string
+              example: KES
+        requestId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+    AccountBalance:
+      required:
+       - accountNumber
+       - balance
+       - requestId
+       - status
+       - timestamp
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          example: "0100000001"
+        status:
+          type: string
+          enum:
+           - ACTIVE
+           - DORMANT
+           - CLOSED
+        balance:
+          required:
+           - amount
+           - currency
+          type: object
+          properties:
+            amount:
+              type: number
+              format: double
+              example: 152340.75
+            currency:
+              type: string
+              description: ISO 4217 code.
+              example: KES
+        requestId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+    Customer:
+      required:
+       - id
+       - name
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Leanne Graham
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            suite:
+              type: string
+            city:
+              type: string
+            zipcode:
+              type: string
+            geo:
+              type: object
+              properties:
+                lat:
+                  type: string
+                lng:
+                  type: string
+        phone:
+          type: string
+        website:
+          type: string
+        company:
+          type: object
+          properties:
+            name:
+              type: string
+            catchPhrase:
+              type: string
+            bs:
+              type: string
+  responses:
+    BadRequest:
+      description: The account number is not 10 digits (`INVALID_ACCOUNT_NUMBER`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Subscription tier quota exceeded (returned by the API gateway).
+    Unauthorized:
+      description: Missing or invalid access token (returned by the API gateway).
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      description: Optional caller correlation id (8-64 chars of A-Z a-z 0-9 . _ -). Generated when absent.
+      required: false
+      style: simple
+      explode: false
+      schema:
+        type: string
+  headers:
+    X-Request-ID:
+      description: Unique id of this request; quote it when contacting support.
+      style: simple
+      explode: false
+      schema:
+        type: string
+        format: uuid
+    X-Correlation-ID:
+      description: "The caller's correlation id, or a generated one."
+      style: simple
+      explode: false
+      schema:
+        type: string
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://test.com
+          scopes: {}
+          x-scopes-bindings: {}

@@ -1,0 +1,66 @@
+type: api
+version: v4.6.0
+data:
+  name: JamiiLoanEligibilityAPI
+  description: Indicative loan eligibility check for Jamii Savings (SOAP-to-REST, backed by WSO2 MI LoanEligibilityAPI).
+  context: /jamii/loans
+  version: v1
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isDefaultVersion: true
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+    - https
+  tags:
+    - jamii
+    - loans
+    - banking
+  # Subscription tiers offered in the Developer Portal. Bronze only (lower
+  # than the other two APIs): every call is a round trip to an external,
+  # rate-limited SOAP service, so consumers get a smaller quota.
+  policies:
+    - Bronze
+  # API-level ceiling across all subscribers, also lower than the other APIs.
+  apiThrottlingPolicy: 10KPerMin
+  # API key: a quote-style calculation with no account data or PII in the
+  # response, typically called server-to-server by partner/branch systems.
+  securityScheme:
+    - api_key
+    - oauth_basic_auth_api_key_mandatory
+  apiKeyHeader: apikey
+  visibility: PUBLIC
+  businessInformation:
+    businessOwner: Jamii Savings Digital Channels
+    technicalOwner: Jamii Savings Integrations Team
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://mi:8290/loans
+    sandbox_endpoints:
+      url: http://mi:8290/loans
+  endpointImplementationType: ENDPOINT
+  operations:
+    - target: /eligibility
+      verb: POST
+      authType: Application & Application User
+      throttlingPolicy: 10KPerMin
+      scopes: []
+      operationPolicies:
+        request: []
+        response: []
+        fault: []
+  apiPolicies:
+    request:
+      - policyName: jamiiCorrelation
+        policyVersion: v1
+        parameters: {}
+    response:
+      - policyName: jamiiSecurityHeaders
+        policyVersion: v1
+        parameters: {}
+    fault:
+      - policyName: jamiiSecurityHeaders
+        policyVersion: v1
+        parameters: {}

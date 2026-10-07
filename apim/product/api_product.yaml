@@ -1,0 +1,49 @@
+type: api_product
+version: v4.6.0
+data:
+  name: JamiiCoreBankingProduct
+  displayName: Jamii Core Banking
+  description: >-
+    One subscription for the three Jamii Savings core APIs: account balance,
+    customer profile and loan eligibility. Intended for first-party channels
+    (mobile app, internet banking, branch systems) that need all three.
+  context: /jamii/core
+  version: 1.0.0
+  provider: admin
+  state: PUBLISHED
+  isDefaultVersion: true
+  visibility: PUBLIC
+  transport:
+    - https
+  tags:
+    - jamii
+    - banking
+  # Product-level tier: one quota across the bundled operations.
+  policies:
+    - Gold
+  # Either an OAuth2 token or an API key is accepted for the bundle.
+  securityScheme:
+    - oauth2
+    - api_key
+    - oauth_basic_auth_api_key_mandatory
+  authorizationHeader: Authorization
+  apiKeyHeader: apikey
+  businessInformation:
+    businessOwner: Jamii Savings Digital Channels
+    technicalOwner: Jamii Savings Integrations Team
+  apis:
+    - name: JamiiAccountsAPI
+      version: v1
+      operations:
+        - target: /{accountNumber}/balance
+          verb: GET
+    - name: JamiiCustomersAPI
+      version: v1
+      operations:
+        - target: /{customerId}
+          verb: GET
+    - name: JamiiLoanEligibilityAPI
+      version: v1
+      operations:
+        - target: /eligibility
+          verb: POST

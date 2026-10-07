@@ -1,0 +1,18 @@
+type: operation_policy_specification
+version: v4.6.0
+data:
+  category: Mediation
+  name: jamiiSecurityHeaders
+  version: v1
+  displayName: Jamii Response Security Headers
+  description: >-
+    Response and fault flows. Adds standard security headers and forbids
+    caching of banking data by browsers and intermediaries.
+  applicableFlows:
+    - response
+    - fault
+  supportedGateways:
+    - Synapse
+  supportedApiTypes:
+    - HTTP
+  policyAttributes: []

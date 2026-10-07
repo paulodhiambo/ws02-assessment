@@ -1,0 +1,195 @@
+openapi: 3.0.1
+info:
+  title: Jamii Savings Loan Eligibility API
+  version: v1
+  description: |
+    Indicative loan eligibility check.
+
+    WSO2 Micro Integrator (`LoanEligibilityAPI`) turns this JSON request into
+    a SOAP 1.1 call, applies a 40% debt-to-income rule to the result, and
+    returns clean JSON. SOAP faults are never passed through.
+
+    **Security:** API key (`apikey` header). **Throttling:** Bronze
+    subscription tier only, plus a stricter API-level limit, because every
+    call costs a round trip to an external SOAP service.
+  contact:
+    name: Jamii Savings Integrations Team
+servers:
+  - url: https://localhost:8243/jamii/loans/v1
+    description: Dev gateway
+security:
+  - api_key: []
+paths:
+  /eligibility:
+    post:
+      operationId: checkLoanEligibility
+      summary: Check whether a customer can afford a loan
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Optional caller correlation id. Generated when absent.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EligibilityRequest'
+            example:
+              customerId: '1'
+              monthlyIncome: 120000
+              existingMonthlyDebt: 15000
+              requestedAmount: 500000
+              tenureMonths: 12
+      responses:
+        '200':
+          description: Decision made (eligible or not).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibilityResponse'
+              example:
+                customerId: '1'
+                eligible: false
+                decision: NOT_ELIGIBLE
+                reason: Monthly installment exceeds 40% of monthly income after existing debt.
+                loan:
+                  requestedAmount: 500000
+                  tenureMonths: 12
+                  monthlyInstallment: 41667
+                  maxAffordableInstallment: 33000
+                  currency: KES
+                requestId: 1d1152c0-fe1b-4dc4-9b98-7cd7ca449da4
+                timestamp: '2026-10-07T16:40:38.973Z'
+        '400':
+          description: '`INVALID_REQUEST`: malformed JSON or schema violation.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid API key (returned by the API gateway).
+        '415':
+          description: '`UNSUPPORTED_MEDIA_TYPE`: Content-Type is not application/json.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`LOAN_REQUEST_REJECTED`: the eligibility service rejected the parameters (SOAP Client fault), e.g. an amount above 2,147,483,647.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Quota exceeded (returned by the API gateway).
+        '502':
+          description: '`LOAN_SERVICE_ERROR`: SOAP Server fault or unexpected SOAP response.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: '`LOAN_SERVICE_UNAVAILABLE`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '504':
+          description: '`LOAN_SERVICE_TIMEOUT`: no response within 10 seconds.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - api_key: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+components:
+  securitySchemes:
+    api_key:
+      type: apiKey
+      name: apikey
+      in: header
+  schemas:
+    EligibilityRequest:
+      type: object
+      additionalProperties: false
+      required: [customerId, monthlyIncome, requestedAmount, tenureMonths]
+      properties:
+        customerId:
+          type: string
+          pattern: '^[A-Za-z0-9-]{1,20}$'
+        monthlyIncome:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1000000000
+          description: Gross monthly income in KES.
+        existingMonthlyDebt:
+          type: number
+          minimum: 0
+          maximum: 1000000000
+          default: 0
+          description: Existing monthly loan repayments in KES.
+        requestedAmount:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1000000000000
+          description: Principal in KES. Rounded to whole shillings for the calculation.
+        tenureMonths:
+          type: integer
+          minimum: 1
+          maximum: 360
+        currency:
+          type: string
+          enum: [KES]
+    EligibilityResponse:
+      type: object
+      required: [customerId, eligible, decision, reason, loan, requestId, timestamp]
+      properties:
+        customerId:
+          type: string
+        eligible:
+          type: boolean
+        decision:
+          type: string
+          enum: [ELIGIBLE, NOT_ELIGIBLE]
+        reason:
+          type: string
+        loan:
+          type: object
+          properties:
+            requestedAmount: { type: number }
+            tenureMonths: { type: integer }
+            monthlyInstallment:
+              type: number
+              description: round_half_even(requestedAmount / tenureMonths), computed by the SOAP service. Principal only, no interest.
+            maxAffordableInstallment:
+              type: number
+              description: 0.4 * monthlyIncome - existingMonthlyDebt
+            currency: { type: string, example: KES }
+        requestId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      description: Error envelope shared by every Jamii Savings API.
+      required: [error, requestId, correlationId, timestamp]
+      properties:
+        error:
+          type: object
+          required: [code, message, status]
+          properties:
+            code: { type: string, example: INVALID_REQUEST }
+            message: { type: string }
+            status: { type: integer }
+        requestId: { type: string, format: uuid }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

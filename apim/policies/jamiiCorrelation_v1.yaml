@@ -1,0 +1,20 @@
+type: operation_policy_specification
+version: v4.6.0
+data:
+  category: Mediation
+  name: jamiiCorrelation
+  version: v1
+  displayName: Jamii Correlation & Consumer Headers
+  description: >-
+    Request flow. Ensures every call reaching Micro Integrator carries a
+    well-formed X-Correlation-ID (keeps the caller's value when valid,
+    otherwise generates one at the gateway) and tells MI which subscribed
+    application made the call (X-Consumer-App), so backend logs can be traced
+    to a consumer without forwarding the caller's credentials.
+  applicableFlows:
+    - request
+  supportedGateways:
+    - Synapse
+  supportedApiTypes:
+    - HTTP
+  policyAttributes: []

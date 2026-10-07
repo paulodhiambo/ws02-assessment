@@ -1,0 +1,160 @@
+openapi: 3.0.1
+info:
+  title: Jamii Savings Customers API
+  version: v1
+  description: |
+    Customer profile lookup.
+
+    A managed proxy (WSO2 Micro Integrator `CustomerAPI`) in front of the
+    customer system of record, which is represented in this assignment by
+    JSONPlaceholder's `/users/{id}`. The response body is passed through
+    unchanged; the gateway adds correlation, header hygiene, timeouts and
+    consistent errors.
+
+    **Security:** OAuth2. **Throttling:** Gold / Silver subscription tiers.
+  contact:
+    name: Jamii Savings Integrations Team
+servers:
+  - url: https://localhost:8243/jamii/customers/v1
+    description: Dev gateway
+security:
+  - default: []
+paths:
+  /{customerId}:
+    get:
+      operationId: getCustomer
+      summary: Get a customer profile
+      description: Contains PII. Responses are sent with `Cache-Control no-store`.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          description: Positive integer customer id.
+          schema:
+            type: string
+            pattern: '^[1-9][0-9]{0,8}$'
+            example: '1'
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Optional caller correlation id. Generated when absent.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Customer found.
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: '`INVALID_CUSTOMER_ID`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid access token (returned by the API gateway).
+        '404':
+          description: '`CUSTOMER_NOT_FOUND`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Subscription tier quota exceeded (returned by the API gateway).
+        '502':
+          description: '`CUSTOMER_BACKEND_ERROR`: the customer system answered with an unexpected status.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: '`CUSTOMER_BACKEND_UNAVAILABLE`: connection refused or circuit open. Safe to retry.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '504':
+          description: '`CUSTOMER_BACKEND_TIMEOUT`: no response within 5 seconds.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+components:
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://localhost:9443/oauth2/authorize
+          scopes: {}
+  schemas:
+    Customer:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Leanne Graham
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: object
+          properties:
+            street: { type: string }
+            suite: { type: string }
+            city: { type: string }
+            zipcode: { type: string }
+            geo:
+              type: object
+              properties:
+                lat: { type: string }
+                lng: { type: string }
+        phone:
+          type: string
+        website:
+          type: string
+        company:
+          type: object
+          properties:
+            name: { type: string }
+            catchPhrase: { type: string }
+            bs: { type: string }
+    Error:
+      type: object
+      description: Error envelope shared by every Jamii Savings API.
+      required: [error, requestId, correlationId, timestamp]
+      properties:
+        error:
+          type: object
+          required: [code, message, status]
+          properties:
+            code: { type: string, example: CUSTOMER_NOT_FOUND }
+            message: { type: string }
+            status: { type: integer }
+        requestId: { type: string, format: uuid }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

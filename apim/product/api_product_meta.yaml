@@ -1,0 +1,8 @@
+name: JamiiCoreBankingProduct
+version: 1.0.0
+deploy:
+  import:
+    importApis: false
+    preserveProvider: true
+    rotateRevision: true
+    updateApiProduct: true

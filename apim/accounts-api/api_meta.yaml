@@ -1,0 +1,7 @@
+name: JamiiAccountsAPI
+version: v1
+deploy:
+  import:
+    preserveProvider: true
+    rotateRevision: true
+    update: true
