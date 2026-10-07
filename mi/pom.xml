@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Builds the Jamii Savings MI integrations into deployable CARs.
+
+    mvn clean install                       # validate, test, package, install
+    mvn clean install -Dcar.version=1.0.42  # CI: stamp the build number
+
+  Lifecycle:
+    validate  build/package_car.py, validate only    (well-formed XML, names, no duplicates)
+    test      tests/run_tests.py                     (artifact policy tests; -DskipTests honoured)
+    package   build/package_car.py                   -> target/cars/*.car
+    install   CARs attached as Maven artifacts (type "car")
+
+  The CAR layout matches what the WSO2 MI tooling produces; packaging is done
+  by a small script so the build only needs Maven + Python 3, not the WSO2
+  plugin repository. See docs/deployment.md.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ke.co.jamiisavings.integration</groupId>
+    <artifactId>jamii-mi-integrations</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>Jamii Savings - MI integrations</name>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <car.version>${project.version}</car.version>
+        <car.output>${project.build.directory}/cars</car.output>
+        <python.executable>python3</python.executable>
+        <skipTests>false</skipTests>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>validate-artifacts</id>
+                        <phase>validate</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <executable>${python.executable}</executable>
+                            <arguments>
+                                <argument>${project.basedir}/build/package_car.py</argument>
+                                <argument>--version</argument>
+                                <argument>${car.version}</argument>
+                                <argument>--validate-only</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>artifact-tests</id>
+                        <phase>test</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <skip>${skipTests}</skip>
+                            <executable>${python.executable}</executable>
+                            <arguments>
+                                <argument>${project.basedir}/tests/run_tests.py</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>package-cars</id>
+                        <phase>package</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <executable>${python.executable}</executable>
+                            <arguments>
+                                <argument>${project.basedir}/build/package_car.py</argument>
+                                <argument>--version</argument>
+                                <argument>${car.version}</argument>
+                                <argument>--out</argument>
+                                <argument>${car.output}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-cars</id>
+                        <phase>package</phase>
+                        <goals><goal>attach-artifact</goal></goals>
+                        <configuration>
+                            <artifacts>
+                                <artifact>
+                                    <file>${car.output}/JamiiCommon_${car.version}.car</file>
+                                    <type>car</type>
+                                    <classifier>common</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${car.output}/JamiiAccountBalance_${car.version}.car</file>
+                                    <type>car</type>
+                                    <classifier>account-balance</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${car.output}/JamiiCustomerProxy_${car.version}.car</file>
+                                    <type>car</type>
+                                    <classifier>customer-proxy</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${car.output}/JamiiLoanEligibility_${car.version}.car</file>
+                                    <type>car</type>
+                                    <classifier>loan-eligibility</classifier>
+                                </artifact>
+                            </artifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
