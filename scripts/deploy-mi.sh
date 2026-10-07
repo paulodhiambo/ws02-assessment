@@ -7,8 +7,9 @@
 # Steps:
 #   1. preflight: CARs built, MI healthy, management API login works
 #   2. back up the Jamii*.car files currently deployed
-#   3. stage the new CARs inside the container, then swap them in with mv
-#      (an atomic rename, so the hot deployer never sees a half-copied file)
+#   3. stage the new CARs inside the container, remove the old CARs and wait
+#      until MI has undeployed them, then move the new ones in with mv (an
+#      atomic rename, so the hot deployer never sees a half-copied file)
 #   4. poll the management API until every expected app/version is active;
 #      any faulty app, or a timeout, triggers a rollback to the backup
 #
@@ -110,8 +111,21 @@ for car in "${CARS[@]}"; do
   compose cp "$car" "$MI_CONTAINER_SERVICE:$STAGE_DIR/" >/dev/null 2>&1 || die "could not copy $(basename "$car") into the MI container"
 done
 mi_sh "chown -R wso2carbon '$STAGE_DIR' 2>/dev/null; true"
-log "staged; swapping into $CARBONAPPS"
-mi_sh "rm -f '$CARBONAPPS'/Jamii*.car && mv '$STAGE_DIR'/*.car '$CARBONAPPS'/"
+# Undeploy first and wait until MI has dropped the old apps. Without this, a
+# redeploy of the same version would "verify" instantly against the old
+# deployment before the hot deployer has picked up the new files.
+log "staged; undeploying the current Jamii apps"
+mi_sh "rm -f '$CARBONAPPS'/Jamii*.car"
+undeployed() {
+  applications | python3 -c '
+import sys, json
+names = {a["name"] for a in json.load(sys.stdin).get("activeList", [])}
+sys.exit(1 if any(x.split(":")[0] in names for x in sys.argv[1:]) else 0)
+' "${EXPECTED[@]}"
+}
+wait_for "old apps undeployed" 90 undeployed || { rollback; die "MI did not undeploy the previous apps"; }
+log "deploying new CARs into $CARBONAPPS"
+mi_sh "mv '$STAGE_DIR'/*.car '$CARBONAPPS'/"
 
 # 4. verify all-or-nothing
 if ! wait_for_expected; then

@@ -69,6 +69,11 @@ run_integration() {
   else
     warn "MI uses the public customer backend; skipping the mock-backend folder"
   fi
+  # Warm-up: the first call from a fresh MI to a public backend pays for DNS,
+  # TLS and CDN cold paths (seen at ~4s), which is not what these tests measure.
+  curl -s -o /dev/null -m 15 http://localhost:8290/customers/1 || true
+  curl -s -o /dev/null -m 15 -H 'Content-Type: application/json' \
+    -d '{"customerId":"1","monthlyIncome":1000,"requestedAmount":1000,"tenureMonths":1}' http://localhost:8290/loans/eligibility || true
   log "integration: newman against $TARGET"
   mkdir -p "$REPO_ROOT/target/test-reports"
   docker run --rm --network "$NETWORK" \
