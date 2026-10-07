@@ -28,8 +28,13 @@ load_env() {
 
 require() { command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not installed"; }
 
-# json_get <python expression over `d`>: reads JSON on stdin.
-json_get() { python3 -c "import sys, json; d = json.load(sys.stdin); print($1)"; }
+# The jamii helper CLI (tools/), built on first use by scripts/build-tools.sh.
+JAMII_BIN="$REPO_ROOT/.tools/bin/jamii"
+jamii() { "$REPO_ROOT/scripts/build-tools.sh" && "$JAMII_BIN" "$@"; }
+
+# json_get <path>: prints a value from JSON on stdin, e.g. json_get error.code,
+# json_get 'errors[0].code', json_get 'values[key=apiKey].value' (see tools/jsonq).
+json_get() { jamii json "$1"; }
 
 compose() { docker compose -f "$REPO_ROOT/docker-compose.yml" "$@"; }
 

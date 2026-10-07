@@ -7,8 +7,7 @@
 | Docker + compose plugin | 29.x / v2 | the whole environment |
 | JDK | 17+ (tested on 21) | Maven |
 | Maven | 3.9+ | MI build |
-| Python 3 | 3.9+ | CAR packaging, deploy helpers (standard library only) |
-| Go | 1.24+ | MI artifact tests and the mocks' unit tests (`scripts/test.sh` falls back to the `golang` image if Go is not installed) |
+| Go | 1.24+ | the `jamii` helper CLI (CAR packaging, Dev Portal onboarding, JSON parsing in scripts), the MI artifact tests and the mocks. Optional: without Go, `scripts/build-tools.sh` and `scripts/test.sh` use the `golang` image |
 | apictl | 4.6.x | APIM import (`scripts/install-apictl.sh` installs it into `.tools/`, where the scripts look first) |
 | curl, zip, rsync | n/a | scripts |
 
@@ -25,7 +24,7 @@ docker compose --profile apim up -d --build --wait   # DB, mocks, MI, APIM (APIM
 scripts/deploy-mi.sh dev                          # deploy the 4 CARs, all-or-nothing
 scripts/install-apictl.sh                              # apictl 4.6.4 into .tools/ (scripts find it there)
 scripts/deploy-apim.sh dev                        # import 3 APIs + product, all-or-nothing
-python3 scripts/apim-demo-consumer.py             # Dev Portal app, subscriptions, keys; prints curl commands
+scripts/apim-demo-consumer.sh                     # Dev Portal app, subscriptions, keys; prints curl commands
 scripts/test.sh --all                             # unit + integration (MI) + chaos
 scripts/test.sh --integration --apim              # same suite through the gateway
 ```
@@ -49,9 +48,9 @@ docker compose up -d mi        # deployed CARs survive (volume), no redeploy nee
 
 | Phase | What runs |
 |-------|-----------|
-| validate | `build/package_car.py --validate-only`: XML well-formed, artifact names match files, no duplicates across modules |
+| validate | `scripts/build-tools.sh` builds the `jamii` CLI from `tools/` into `.tools/bin/` (skipped when up to date), then `jamii package-car --validate-only`: XML well-formed, artifact names match files, no duplicates across modules |
 | test | `go test ./...` in `tests/`: 34 artifact tests (policies and per-API contracts) |
-| package | `build/package_car.py` → `target/cars/Jamii{Common,AccountBalance,CustomerProxy,LoanEligibility}_<version>.car` |
+| package | `jamii package-car` → `target/cars/Jamii{Common,AccountBalance,CustomerProxy,LoanEligibility}_<version>.car` |
 | install | CARs attached as Maven artifacts (type `car`) |
 
 `-Dcar.version=1.0.<build>` stamps the CI build number into every CAR.
@@ -133,6 +132,6 @@ call `scripts/`, they stay in step. Mapping:
 | `try/catch` MI restore | step with `if: failure() && steps.apim.outcome == 'failure'` |
 | `post { always }` | steps with `if: always()` |
 
-**Agent requirements:** Docker with compose, JDK, Maven, Python 3, curl,
-zip, rsync. Credentials in Jenkins are only needed for prod; dev uses the
+**Agent requirements:** Docker with compose, JDK, Maven, curl, zip, rsync
+(Go optional). Credentials in Jenkins are only needed for prod; dev uses the
 stock image defaults.

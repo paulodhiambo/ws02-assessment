@@ -6,14 +6,15 @@
     mvn clean install -Dcar.version=1.0.42  # CI: stamp the build number
 
   Lifecycle:
-    validate  build/package_car.py, validate only    (well-formed XML, names, no duplicates)
-    test      go test ./... in tests/                (artifact policy tests; -DskipTests honoured)
-    package   build/package_car.py                   -> target/cars/*.car
+    validate    scripts/build-tools.sh                 builds the jamii helper CLI (tools/) if needed,
+                jamii package-car, validate only       then: well-formed XML, names, no duplicates
+    test        go test ./... in tests/                (artifact policy tests; -DskipTests honoured)
+    package     jamii package-car                      -> target/cars/*.car
     install   CARs attached as Maven artifacts (type "car")
 
   The CAR layout matches what the WSO2 MI tooling produces; packaging is done
-  by a small script so the build only needs Maven, Python 3 and Go (tests),
-  not the WSO2 plugin repository. See docs/deployment.md.
+  by a small Go tool (tools/carpkg) so the build only needs Maven and Go (or
+  Docker, which build-tools.sh falls back to), not the WSO2 plugin repository. See docs/deployment.md.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -30,7 +31,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <car.version>${project.version}</car.version>
         <car.output>${project.build.directory}/cars</car.output>
-        <python.executable>python3</python.executable>
+        <jamii.bin>${project.basedir}/../.tools/bin/jamii</jamii.bin>
         <go.executable>go</go.executable>
         <skipTests>false</skipTests>
     </properties>
@@ -43,13 +44,27 @@
                 <version>3.5.0</version>
                 <executions>
                     <execution>
+                        <!-- validate is Maven's first phase; executions in one phase run in declaration order. -->
+                        <id>build-tools</id>
+                        <phase>validate</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <executable>bash</executable>
+                            <arguments>
+                                <argument>${project.basedir}/../scripts/build-tools.sh</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>validate-artifacts</id>
                         <phase>validate</phase>
                         <goals><goal>exec</goal></goals>
                         <configuration>
-                            <executable>${python.executable}</executable>
+                            <executable>${jamii.bin}</executable>
                             <arguments>
-                                <argument>${project.basedir}/build/package_car.py</argument>
+                                <argument>package-car</argument>
+                                <argument>--mi-root</argument>
+                                <argument>${project.basedir}</argument>
                                 <argument>--version</argument>
                                 <argument>${car.version}</argument>
                                 <argument>--validate-only</argument>
@@ -76,9 +91,11 @@
                         <phase>package</phase>
                         <goals><goal>exec</goal></goals>
                         <configuration>
-                            <executable>${python.executable}</executable>
+                            <executable>${jamii.bin}</executable>
                             <arguments>
-                                <argument>${project.basedir}/build/package_car.py</argument>
+                                <argument>package-car</argument>
+                                <argument>--mi-root</argument>
+                                <argument>${project.basedir}</argument>
                                 <argument>--version</argument>
                                 <argument>${car.version}</argument>
                                 <argument>--out</argument>

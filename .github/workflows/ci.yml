@@ -80,7 +80,7 @@ jobs:
         run: scripts/test.sh --integration
 
       - name: Developer Portal onboarding
-        run: python3 scripts/apim-demo-consumer.py > /dev/null
+        run: scripts/apim-demo-consumer.sh > /dev/null
 
       - name: Integration tests (through the APIM gateway)
         run: scripts/test.sh --integration --apim

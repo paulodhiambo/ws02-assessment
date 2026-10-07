@@ -4,11 +4,12 @@
 // release -> integration/chaos tests -> (approval) -> prod.
 //
 // The pipeline contains no per-API logic. The lists of integrations live in
-// one place each (mi/build/package_car.py, scripts/deploy-apim.sh), and every
+// one place each (tools/carpkg, scripts/deploy-apim.sh), and every
 // stage loops over all of them, so adding a fourth API needs no pipeline change.
 //
 // Agent requirements: Docker with the compose plugin, JDK 17+, Maven 3.9+,
-// Python 3, curl, zip, rsync. apictl is installed by the pipeline.
+// curl, zip, rsync. Go is optional (the Go tools and tests fall back to the
+// golang image); apictl is installed by the pipeline.
 
 pipeline {
     agent any
@@ -95,7 +96,7 @@ pipeline {
         stage('Dev: integration tests') {
             steps {
                 sh 'scripts/test.sh --integration'          // direct to MI
-                sh 'python3 scripts/apim-demo-consumer.py'  // Dev Portal onboarding: app, subscriptions, keys
+                sh 'scripts/apim-demo-consumer.sh'          // Dev Portal onboarding: app, subscriptions, keys
                 sh 'scripts/test.sh --integration --apim'   // same suite through the gateway (OAuth2 + API key)
                 sh 'scripts/test.sh --chaos'                // DB / backend outages map to the right errors
             }

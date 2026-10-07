@@ -5,7 +5,7 @@ Before recording: stack up, CARs and APIs deployed, keys generated:
 ```bash
 scripts/build.sh && docker compose --profile apim up -d --build --wait
 scripts/deploy-mi.sh dev && scripts/deploy-apim.sh dev
-eval "$(python3 scripts/apim-demo-consumer.py | grep '^export ')"   # sets GW, TOKEN (1h), APIKEY
+eval "$(scripts/apim-demo-consumer.sh | grep '^export ')"   # sets GW, TOKEN (1h), APIKEY
 ```
 
 Have three terminals: commands, `docker compose logs -f mi | grep event`, and

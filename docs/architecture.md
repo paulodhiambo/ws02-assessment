@@ -91,7 +91,7 @@ about 15s; that was measured before and after the change.
 scrubbing live in `CalculatorDivideTemplate`, so adding another operation
 (e.g. `Multiply` for interest) reuses the endpoint and the hygiene rules.
 
-**Custom CAR packaging.** `mi/build/package_car.py`, run from Maven, writes
+**Custom CAR packaging.** `tools/carpkg` (the `jamii package-car` command), run from Maven, writes
 the standard CAR layout (`artifacts.xml` plus one folder per artifact). It
 avoids depending on the WSO2 Maven repository and Integration Studio project
 metadata, and keeps the folder layout simple. The trade-off is that it is a

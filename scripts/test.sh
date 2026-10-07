@@ -7,7 +7,7 @@
 #   scripts/test.sh --chaos                 stops the DB/backends and checks the error mapping
 #   scripts/test.sh --all                   unit + integration (MI) + chaos
 #
-# Unit:        mock services and MI artifact tests (go vet + go test).
+# Unit:        mock services, MI artifact tests and the helper CLI (go vet + go test).
 # Integration: needs the compose stack with CARs deployed (and APIs imported for --apim).
 #              newman runs in Docker on the compose network, so no local Node/newman is needed.
 #              The "mock-backend" folder runs only when MI points at the local customer mock.
@@ -49,6 +49,8 @@ run_unit() {
   go_test mocks/loan-eligibility-soap || FAILED=1
   log "unit: MI artifact tests"
   go_test mi/tests || FAILED=1
+  log "unit: build/deploy helper CLI"
+  go_test tools || FAILED=1
 }
 
 mi_customer_backend() { compose exec -T mi printenv CUSTOMER_BACKEND_URL 2>/dev/null || true; }
@@ -57,10 +59,10 @@ run_integration() {
   local vars=() folders=(--folder accounts --folder customers --folder loans --folder "dashboard (bonus A)" --folder negative)
   if [[ "$TARGET" == apim ]]; then
     local envfile="$REPO_ROOT/tests/postman/apim.env.json"
-    [[ -f "$envfile" ]] || python3 "$REPO_ROOT/scripts/apim-demo-consumer.py" >/dev/null
+    [[ -f "$envfile" ]] || "$REPO_ROOT/scripts/apim-demo-consumer.sh" >/dev/null
     local token apikey
-    token="$(json_get "[v['value'] for v in d['values'] if v['key']=='accessToken'][0]" < "$envfile")"
-    apikey="$(json_get "[v['value'] for v in d['values'] if v['key']=='apiKey'][0]" < "$envfile")"
+    token="$(json_get 'values[key=accessToken].value' < "$envfile")"
+    apikey="$(json_get 'values[key=apiKey].value' < "$envfile")"
     vars=(--env-var accountsUrl=https://apim:8243/jamii/accounts/v1
           --env-var customersUrl=https://apim:8243/jamii/customers/v1
           --env-var loansUrl=https://apim:8243/jamii/loans/v1
@@ -95,7 +97,7 @@ expect() {
   local out got_status got_code
   out="$(curl -s -m 30 -w '\n%{http_code}' "$@")"
   got_status="${out##*$'\n'}"
-  got_code="$(sed '$d' <<<"$out" | json_get "d['error']['code']" 2>/dev/null || echo '?')"
+  got_code="$(sed '$d' <<<"$out" | json_get error.code 2>/dev/null || echo '?')"
   if [[ "$got_status" =~ ^($status)$ && "$got_code" =~ ^($code)$ ]]; then
     log "PASS $what -> $got_status $got_code"
   else
@@ -109,9 +111,11 @@ run_chaos() {
   compose stop accounts-db >/dev/null 2>&1
   expect "balance with DB down" 503 ACCOUNT_DB_UNAVAILABLE "$mi/accounts/0100000001/balance"
   # Bonus A: the dashboard degrades to partial data instead of failing.
-  local dash
+  local dash body
   dash="$(curl -s -m 30 -w '\n%{http_code}' "$mi/customers/1/dashboard")"
-  if [[ "${dash##*$'\n'}" == 200 && "$(sed '$d' <<<"$dash" | json_get "str(d['partial']) + ':' + d['errors'][0]['code']")" == "True:ACCOUNT_DB_UNAVAILABLE" ]]; then
+  body="$(sed '$d' <<<"$dash")"
+  if [[ "${dash##*$'\n'}" == 200 && \
+        "$(json_get partial <<<"$body" 2>/dev/null):$(json_get 'errors[0].code' <<<"$body" 2>/dev/null)" == "true:ACCOUNT_DB_UNAVAILABLE" ]]; then
     log "PASS dashboard with DB down -> 200 partial, accounts flagged ACCOUNT_DB_UNAVAILABLE"
   else
     warn "FAIL dashboard with DB down -> ${dash//$'\n'/ }"; FAILED=1

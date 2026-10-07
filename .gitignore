@@ -21,11 +21,9 @@ infrastructure/config/prod.env
 # apictl local state
 .wso2apictl/
 
-# Python
-__pycache__/
-*.pyc
+# Credentials written by scripts/apim-demo-consumer.sh
 tests/postman/apim.env.json
 
-# Local tools (apictl)
+# Local tools (apictl, the jamii helper CLI)
 .tools/
 .apictl/

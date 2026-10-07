@@ -20,7 +20,7 @@ More detail: [architecture](docs/architecture.md) · [API design, mappings and e
 
 ## Run it locally
 
-Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Python 3, Go 1.24+.
+Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Go 1.24+ (optional: the Go builds and tests fall back to Docker).
 
 ```bash
 scripts/build.sh                                       # 4 CARs + APIM packages; runs 34 MI artifact tests
@@ -28,7 +28,7 @@ docker compose --profile apim up -d --build --wait     # MySQL, mocks, MI, APIM 
 scripts/deploy-mi.sh dev                               # MI APIs on http://localhost:8290
 scripts/install-apictl.sh                              # apictl 4.6.4 into .tools/ (scripts find it there)
 scripts/deploy-apim.sh dev                             # 3 APIs + product on https://localhost:8243/jamii/...
-eval "$(python3 scripts/apim-demo-consumer.py | grep '^export ')"   # Dev Portal app, subscriptions, OAuth2 token, API key
+eval "$(scripts/apim-demo-consumer.sh | grep '^export ')"           # Dev Portal app, subscriptions, OAuth2 token, API key
 curl -sk "$GW/accounts/v1/0100000001/balance" -H "Authorization: Bearer $TOKEN"
 scripts/test.sh --all                                  # unit + Postman suite against MI + outage tests
 scripts/cleanup.sh --all
@@ -73,10 +73,13 @@ Ready-made requests: `tests/integration/*.http`, `tests/negative/*.http`, `tests
 - **API Product** `JamiiCoreBankingProduct` bundles all three operations,
   so first-party channels get one subscription. The APIs stay individually
   subscribable.
-- **Packaging:** a small Python packager, run by `mvn clean install`, writes
-  standard CARs from a simple folder layout instead of depending on the
+- **Tooling in Go:** a small helper CLI (`tools/`, built automatically into
+  `.tools/bin/jamii`) packages the CARs for `mvn clean install` and handles
+  Developer Portal onboarding and JSON parsing for the scripts. The CARs are
+  standard; writing them from a simple folder layout avoids depending on the
   WSO2 Maven plugins and Integration Studio metadata. The trade-off is one
-  piece of custom tooling.
+  piece of custom tooling. The mocks and every test are also Go, so the
+  repo needs no Python.
 - **Deployments are all-or-nothing.** MI CARs are swapped in atomically,
   verified through the management API, and rolled back on any faulty app.
   APIM APIs are backed up, imported, and restored if any import fails. If

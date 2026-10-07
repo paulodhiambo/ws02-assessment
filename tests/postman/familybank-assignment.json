@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "d7bc704f-9c31-53b8-b11b-25cc05d8fc94",
     "name": "Jamii Savings – WSO2 assignment",
-    "description": "Integration tests for the three APIs. Point accountsUrl/customersUrl/loansUrl at MI (default) or at the APIM gateway (set accessToken/apiKey from scripts/apim-demo-consumer.py). Run with scripts/test.sh --integration.",
+    "description": "Integration tests for the three APIs. Point accountsUrl/customersUrl/loansUrl at MI (default) or at the APIM gateway (set accessToken/apiKey from scripts/apim-demo-consumer.sh). Run with scripts/test.sh --integration.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

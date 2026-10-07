@@ -254,5 +254,5 @@ Custom gateway policies (`apim/policies`), attached to all three APIs:
 5. **Call** the gateway URLs shown on each API's overview page. Usage and
    throttling are tracked per application and subscription.
 
-`scripts/apim-demo-consumer.py` does steps 2–4 through the Developer Portal
+`scripts/apim-demo-consumer.sh` (Go: `tools/apimconsumer`) does steps 2–4 through the Developer Portal
 REST API. CI uses it before running the test suite through the gateway.

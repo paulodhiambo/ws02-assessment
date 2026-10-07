@@ -22,7 +22,8 @@ while (( $# )); do
   shift
 done
 
-require mvn; require python3; require zip
+require mvn; require zip
+"$REPO_ROOT/scripts/build-tools.sh"
 
 # --- Micro Integrator ------------------------------------------------------
 log "MI: mvn clean install (car.version=$VERSION)"

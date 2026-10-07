@@ -1,7 +1,7 @@
 ### Account balance – happy paths
 # Works with the VS Code REST Client or JetBrains HTTP Client.
 # Direct to MI by default; switch @base to go through the APIM gateway
-# (then fill @token from scripts/apim-demo-consumer.py).
+# (then fill @token from scripts/apim-demo-consumer.sh).
 @mi = http://localhost:8290
 @gw = https://localhost:8243/jamii
 @base = {{mi}}/accounts

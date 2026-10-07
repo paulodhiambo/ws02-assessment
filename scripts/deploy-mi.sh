@@ -55,11 +55,12 @@ if $DRY_RUN || [[ -z "${MI_CONTAINER_SERVICE:-}" ]]; then
   exit 0
 fi
 
-require docker; require curl; require python3
+require docker; require curl
+jamii help >/dev/null   # build the helper CLI up front, not mid-deployment
 mi_sh() { compose exec -T "$MI_CONTAINER_SERVICE" sh -c "$1"; }
 
 mi_token() {
-  curl -skf -u "$MI_USER:$MI_PASS" "$MI_MGMT_URL/login" | json_get "d['AccessToken']"
+  curl -skf -u "$MI_USER:$MI_PASS" "$MI_MGMT_URL/login" | json_get AccessToken
 }
 
 applications() {
@@ -68,16 +69,7 @@ applications() {
 
 # Prints "ok", "faulty:<names>" or "pending:<names>" for the expected set.
 deployment_state() {
-  applications | python3 -c '
-import sys, json
-d = json.load(sys.stdin)
-active = {(a["name"], a["version"]) for a in d.get("activeList", [])}
-faulty_raw = json.dumps(d.get("faultyList", []))
-expected = [tuple(x.split(":", 1)) for x in sys.argv[1:]]
-faulty = [n for n, v in expected if n in faulty_raw]
-pending = [f"{n}:{v}" for n, v in expected if (n, v) not in active]
-print("faulty:" + ",".join(faulty) if faulty else "pending:" + ",".join(pending) if pending else "ok")
-' "${EXPECTED[@]}"
+  applications | jamii mi-apps state "${EXPECTED[@]}"
 }
 
 wait_for_expected() {
@@ -98,7 +90,7 @@ rollback() {
   warn "rolling back to the previously deployed CARs"
   mi_sh "rm -f '$CARBONAPPS'/Jamii*.car; if ls '$BACKUP_DIR'/*.car >/dev/null 2>&1; then mv '$BACKUP_DIR'/*.car '$CARBONAPPS'/; fi" || true
   sleep 20
-  warn "rollback finished; currently active: $(applications | json_get "', '.join(a['name'] + ':' + a['version'] for a in d.get('activeList', []))" || echo unknown)"
+  warn "rollback finished; currently active: $(applications | jamii mi-apps active || echo unknown)"
 }
 
 # 1. preflight
@@ -117,11 +109,7 @@ mi_sh "chown -R wso2carbon '$STAGE_DIR' 2>/dev/null; true"
 log "staged; undeploying the current Jamii apps"
 mi_sh "rm -f '$CARBONAPPS'/Jamii*.car"
 undeployed() {
-  applications | python3 -c '
-import sys, json
-names = {a["name"] for a in json.load(sys.stdin).get("activeList", [])}
-sys.exit(1 if any(x.split(":")[0] in names for x in sys.argv[1:]) else 0)
-' "${EXPECTED[@]}"
+  applications | jamii mi-apps undeployed "${EXPECTED[@]}"
 }
 wait_for "old apps undeployed" 90 undeployed || { rollback; die "MI did not undeploy the previous apps"; }
 log "deploying new CARs into $CARBONAPPS"
@@ -141,5 +129,4 @@ rm -rf "$PREVIOUS_DIR" && mkdir -p "$PREVIOUS_DIR"
 compose cp "$MI_CONTAINER_SERVICE:$BACKUP_DIR/." "$PREVIOUS_DIR/" >/dev/null 2>&1 || true
 mi_sh "rm -rf '$STAGE_DIR' '$BACKUP_DIR'"
 log "all ${#CARS[@]} CARs active on $ENV_NAME (previous set saved in target/mi-previous)"
-curl -skf -H "Authorization: Bearer $TOKEN" "$MI_MGMT_URL/apis" \
-  | json_get "'\n'.join('  ' + a['name'] + '  ' + a['url'] for a in d['list'])" >&2
+curl -skf -H "Authorization: Bearer $TOKEN" "$MI_MGMT_URL/apis" | json_get 'list[*].url' | sed 's/^/  /' >&2
