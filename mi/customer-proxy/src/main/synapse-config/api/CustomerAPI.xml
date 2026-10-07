@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  GET /customers/{customerId}  - managed proxy in front of JSONPlaceholder /users/{id}
+
+  Gateway value added on top of a plain pass-through:
+    - X-Correlation-ID injected when the caller did not send one (see correlation)
+    - internal / credential headers stripped before the request leaves the bank
+    - all backend response headers dropped; only our own headers go back
+    - Cache-Control: no-store, since the body contains customer PII
+    - 5s timeout and circuit breaking on the endpoint (CustomerBackendEP)
+    - backend failures mapped to the common error envelope (customer-fault)
+
+  The success body is passed through unchanged.
+
+  200 -> backend body
+  400 -> INVALID_CUSTOMER_ID
+  404 -> CUSTOMER_NOT_FOUND
+  502 -> CUSTOMER_BACKEND_ERROR       (backend answered with an unexpected status)
+  503 -> CUSTOMER_BACKEND_UNAVAILABLE (connection refused / endpoint suspended)
+  504 -> CUSTOMER_BACKEND_TIMEOUT
+-->
+<api name="CustomerAPI" context="/customers" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="GET" uri-template="/{customerId}" faultSequence="customer-fault">
+        <inSequence>
+            <property name="API_NAME" value="CustomerAPI" scope="default" type="STRING"/>
+            <property name="OPERATION" value="GET /customers/{customerId}" scope="default" type="STRING"/>
+            <sequence key="correlation"/>
+            <property name="MASK_INPUT" expression="get-property('uri.var.customerId')" scope="default" type="STRING"/>
+            <sequence key="mask-sensitive-data"/>
+            <property name="LOG_SUBJECT" expression="concat('customer=', get-property('MASKED_VALUE'))" scope="default" type="STRING"/>
+            <sequence key="request-logging"/>
+
+            <filter source="get-property('uri.var.customerId')" regex="[1-9][0-9]{0,8}">
+                <then/>
+                <else>
+                    <property name="ERROR_STATUS" value="400" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="INVALID_CUSTOMER_ID" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="customerId must be a positive integer." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+
+            <!-- Outbound header hygiene: never forward caller credentials or internal headers. -->
+            <header name="Authorization" scope="transport" action="remove"/>
+            <header name="Cookie" scope="transport" action="remove"/>
+            <header name="apikey" scope="transport" action="remove"/>
+            <header name="Internal-Key" scope="transport" action="remove"/>
+            <header name="X-JWT-Assertion" scope="transport" action="remove"/>
+            <header name="X-Internal-User-Id" scope="transport" action="remove"/>
+            <header name="X-Internal-Debug" scope="transport" action="remove"/>
+            <!-- Do not hand end-customer IPs to a third-party backend. -->
+            <header name="X-Forwarded-For" scope="transport" action="remove"/>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <header name="X-Request-ID" scope="transport" expression="get-property('REQUEST_ID')"/>
+
+            <property name="uri.var.customerBackendUrl" expression="get-property('env', 'CUSTOMER_BACKEND_URL')" scope="default" type="STRING"/>
+            <property name="STAGE" value="BACKEND_CALL" scope="default" type="STRING"/>
+            <property name="BACKEND_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_CALL"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backend" expression="get-property('uri.var.customerBackendUrl')"/>
+                <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+            <call>
+                <endpoint key="CustomerBackendEP"/>
+            </call>
+            <property name="STAGE" value="MAPPING" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_RESPONSE"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backendStatus" expression="$axis2:HTTP_SC"/>
+                <property name="latencyMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START'))"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+
+            <switch source="$axis2:HTTP_SC">
+                <case regex="200">
+                    <!-- Inbound header hygiene: drop Server, X-Powered-By, cookies, CDN headers, etc. -->
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="Cache-Control" scope="transport" value="no-store"/>
+                    <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+                    <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+                    <sequence key="response-logging"/>
+                    <respond/>
+                </case>
+                <case regex="404">
+                    <property name="ERROR_STATUS" value="404" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="CUSTOMER_NOT_FOUND" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="No customer exists with the given id." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </case>
+                <default>
+                    <property name="ERROR_STATUS" value="502" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="CUSTOMER_BACKEND_ERROR" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="The customer service returned an unexpected response." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </default>
+            </switch>
+        </inSequence>
+    </resource>
+</api>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Customer backend (JSONPlaceholder /users/{id}, or the local mock).
+
+  The base URL comes from the CUSTOMER_BACKEND_URL environment variable, set
+  into uri.var.customerBackendUrl by CustomerAPI. {+...} is reserved
+  expansion, so the "://" and "/" in the base URL are not percent-encoded.
+
+  Timeout: 5s, then fault (-> 504 in customer-fault).
+  Circuit breaking: connection failures suspend the endpoint briefly (2s,
+  doubling up to 30s) so a dead backend fails fast instead of tying up
+  threads; while suspended, calls fault immediately (-> 503).
+-->
+<endpoint name="CustomerBackendEP" xmlns="http://ws.apache.org/ns/synapse">
+    <http method="get" uri-template="{+uri.var.customerBackendUrl}/users/{uri.var.customerId}">
+        <timeout>
+            <duration>5000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <suspendOnFailure>
+            <errorCodes>101503,101505</errorCodes>
+            <initialDuration>2000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>30000</maximumDuration>
+        </suspendOnFailure>
+        <markForSuspension>
+            <errorCodes>101504</errorCodes>
+            <retriesBeforeSuspension>3</retriesBeforeSuspension>
+            <retryDelay>0</retryDelay>
+        </markForSuspension>
+    </http>
+</endpoint>

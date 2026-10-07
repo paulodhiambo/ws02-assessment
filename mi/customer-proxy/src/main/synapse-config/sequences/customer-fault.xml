@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fault sequence for CustomerAPI: maps transport-level failures of the
+  customer backend to the common error envelope.
+
+    101504              timeout                       -> 504 CUSTOMER_BACKEND_TIMEOUT
+    101xxx, 303xxx      connection refused/closed,
+                        endpoint suspended            -> 503 CUSTOMER_BACKEND_UNAVAILABLE
+    anything else                                     -> 500 INTERNAL_ERROR
+-->
+<sequence name="customer-fault" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="ERROR" level="custom" separator=", ">
+        <property name="event" value="FAULT"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="stage" expression="get-property('STAGE')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="errorCode" expression="get-property('ERROR_CODE')"/>
+        <property name="errorMessage" expression="get-property('ERROR_MESSAGE')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <switch source="get-property('ERROR_CODE')">
+        <case regex="101504">
+            <property name="ERROR_STATUS" value="504" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="CUSTOMER_BACKEND_TIMEOUT" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="The customer service did not respond in time." scope="default" type="STRING"/>
+        </case>
+        <case regex="(101|303)[0-9]{3}">
+            <property name="ERROR_STATUS" value="503" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="CUSTOMER_BACKEND_UNAVAILABLE" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="The customer service is currently unavailable. Please retry later." scope="default" type="STRING"/>
+        </case>
+        <default>
+            <property name="ERROR_STATUS" value="500" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="INTERNAL_ERROR" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="An unexpected error occurred." scope="default" type="STRING"/>
+        </default>
+    </switch>
+    <sequence key="common-error"/>
+</sequence>
