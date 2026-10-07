@@ -12,7 +12,7 @@
 | curl, zip, rsync | n/a | scripts |
 
 Images: `wso2/wso2mi:4.6.0` and `wso2/wso2am:4.6.0` (multi-arch, so they
-run natively on Apple Silicon), plus `mysql:8.4`, `node:22-alpine` and
+run natively on Apple Silicon), plus `mysql:8.4`, `golang:1.27-alpine` (builds the mocks) and
 `postman/newman:6-alpine`. APIM needs about 3 GB of RAM for Docker.
 
 ## Step by step
@@ -106,7 +106,7 @@ Build & package → Unit tests → Archive → Dev: environment → Dev: deploy 
 | Stage | Detail |
 |-------|--------|
 | Build & package | `scripts/build.sh --skip-tests --version 1.0.$BUILD_NUMBER` |
-| Unit tests | mocks (`node --test`) + MI artifact tests |
+| Unit tests | mocks (`go vet` + `go test`) + MI artifact tests |
 | Archive | `mi/target/cars/*.car`, `dist/apim/*.zip` (fingerprinted) |
 | Dev: environment | `docker compose --profile apim up --wait`; `BACKENDS=mock\|public` picks the backends |
 | Dev: deploy | `deploy-mi.sh dev`, then `deploy-apim.sh dev`; if APIM fails, MI is restored from `target/mi-previous` and the build fails |

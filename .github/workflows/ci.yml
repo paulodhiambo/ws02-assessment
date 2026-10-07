@@ -36,6 +36,11 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mocks/customer-service/go.mod
+          cache: false
+
       - name: Build & package
         run: scripts/build.sh --skip-tests --version "$CAR_VERSION"
 

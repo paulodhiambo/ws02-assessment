@@ -32,8 +32,11 @@ LOAN_SOAP_BACKEND_URL=http://soap-mock:8088/calculator.asmx      # local mock
 
 ## Run
 
+A single static Go binary with no dependencies; the WSDL is compiled in
+(`go:embed`). The Docker image is built `FROM scratch` (about 8 MB).
+
 ```bash
-npm start                 # http://localhost:8088/calculator.asmx
-npm test
+go run .                  # http://localhost:8088/calculator.asmx
+go test ./...
 curl 'http://localhost:8088/calculator.asmx?WSDL'
 ```

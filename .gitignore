@@ -4,9 +4,9 @@ dist/
 *.car
 *.zip
 
-# Node
-node_modules/
-npm-debug.log*
+# Go mock binaries (go build in the mock directories)
+mocks/customer-service/customer-service
+mocks/loan-eligibility-soap/loan-eligibility-soap
 
 # Env / secrets
 .env
