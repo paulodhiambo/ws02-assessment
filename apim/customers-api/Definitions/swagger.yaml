@@ -97,6 +97,54 @@ paths:
         - default: []
       x-auth-type: Application & Application User
       x-throttling-tier: Unlimited
+  /{customerId}/dashboard:
+    get:
+      operationId: getCustomerDashboard
+      summary: Customer profile and accounts in one call
+      description: |
+        Calls the customer service and the accounts database in parallel and
+        merges the results. If one side fails or misses the 7s deadline the
+        response is still 200, with that section null, `partial: true` and the
+        reason in `errors`. Contains PII; sent with `Cache-Control: no-store`.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9][0-9]{0,8}$'
+            example: '1'
+      responses:
+        '200':
+          description: Full or partial dashboard. Check `partial`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          description: '`INVALID_CUSTOMER_ID`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid access token (returned by the API gateway).
+        '404':
+          description: '`CUSTOMER_NOT_FOUND`'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: '`DASHBOARD_UNAVAILABLE`: both sections failed. Safe to retry.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
 components:
   securitySchemes:
     default:
@@ -143,6 +191,46 @@ components:
             name: { type: string }
             catchPhrase: { type: string }
             bs: { type: string }
+    Dashboard:
+      type: object
+      required: [customerId, partial, customer, accounts, errors, requestId, timestamp]
+      properties:
+        customerId: { type: string }
+        partial:
+          type: boolean
+          description: true when at least one section is missing; see errors.
+        customer:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            email: { type: string }
+            phone: { type: string }
+        accounts:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              accountNumber: { type: string }
+              type: { type: string }
+              status: { type: string, enum: [ACTIVE, DORMANT, CLOSED] }
+              balance:
+                type: object
+                properties:
+                  amount: { type: number }
+                  currency: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              section: { type: string, enum: [customer, accounts] }
+              code: { type: string, example: ACCOUNT_DB_UNAVAILABLE }
+              message: { type: string }
+        requestId: { type: string, format: uuid }
+        timestamp: { type: string, format: date-time }
     Error:
       type: object
       description: Error envelope shared by every Jamii Savings API.

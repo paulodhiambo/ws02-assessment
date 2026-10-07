@@ -48,7 +48,7 @@ run_unit() {
 mi_customer_backend() { compose exec -T mi printenv CUSTOMER_BACKEND_URL 2>/dev/null || true; }
 
 run_integration() {
-  local vars=() folders=(--folder accounts --folder customers --folder loans --folder negative)
+  local vars=() folders=(--folder accounts --folder customers --folder loans --folder "dashboard (bonus A)" --folder negative)
   if [[ "$TARGET" == apim ]]; then
     local envfile="$REPO_ROOT/tests/postman/apim.env.json"
     [[ -f "$envfile" ]] || python3 "$REPO_ROOT/scripts/apim-demo-consumer.py" >/dev/null
@@ -102,6 +102,14 @@ run_chaos() {
   log "chaos: accounts database down"
   compose stop accounts-db >/dev/null 2>&1
   expect "balance with DB down" 503 ACCOUNT_DB_UNAVAILABLE "$mi/accounts/0100000001/balance"
+  # Bonus A: the dashboard degrades to partial data instead of failing.
+  local dash
+  dash="$(curl -s -m 30 -w '\n%{http_code}' "$mi/customers/1/dashboard")"
+  if [[ "${dash##*$'\n'}" == 200 && "$(sed '$d' <<<"$dash" | json_get "str(d['partial']) + ':' + d['errors'][0]['code']")" == "True:ACCOUNT_DB_UNAVAILABLE" ]]; then
+    log "PASS dashboard with DB down -> 200 partial, accounts flagged ACCOUNT_DB_UNAVAILABLE"
+  else
+    warn "FAIL dashboard with DB down -> ${dash//$'\n'/ }"; FAILED=1
+  fi
   compose start accounts-db >/dev/null 2>&1
   wait_for "accounts-db" 120 curl -sf "$mi/accounts/0100000001/balance" || { warn "DB did not recover"; FAILED=1; }
 

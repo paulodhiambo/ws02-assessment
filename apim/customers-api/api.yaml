@@ -49,6 +49,15 @@ data:
         request: []
         response: []
         fault: []
+    - target: /{customerId}/dashboard
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: 50KPerMin
+      scopes: []
+      operationPolicies:
+        request: []
+        response: []
+        fault: []
   apiPolicies:
     request:
       - policyName: jamiiCorrelation

@@ -264,6 +264,129 @@
       ]
     },
     {
+      "name": "dashboard (bonus A)",
+      "item": [
+        {
+          "name": "dashboard - customer with accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const b = pm.response.json();",
+                  "pm.test('merged sections', () => {",
+                  "  pm.expect(b).to.have.all.keys('customerId', 'partial', 'customer', 'accounts', 'errors', 'requestId', 'timestamp');",
+                  "  pm.expect(b.partial).to.be.false;",
+                  "  pm.expect(b.customer.id).to.eql(1);",
+                  "  pm.expect(b.accounts.map(a => a.accountNumber)).to.include('0100000001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/1/dashboard"
+          }
+        },
+        {
+          "name": "dashboard - unknown customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code CUSTOMER_NOT_FOUND', () => pm.expect(body.error.code).to.eql('CUSTOMER_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/4242/dashboard"
+          }
+        },
+        {
+          "name": "dashboard - malformed id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "pm.test('correlation id returned', () => pm.expect(pm.response.headers.get('X-Correlation-ID')).to.be.a('string').and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test('common error envelope', () => {",
+                  "  pm.expect(body).to.have.all.keys('error', 'requestId', 'correlationId', 'timestamp');",
+                  "  pm.expect(body.error).to.have.all.keys('code', 'message', 'status');",
+                  "  pm.expect(body.error.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('no backend details leaked', () => {",
+                  "  const raw = pm.response.text().toLowerCase();",
+                  "  ['soap', 'exception', 'faultstring', 'sql', 'stack'].forEach(w => pm.expect(raw).to.not.include(w));",
+                  "});",
+                  "pm.test('error code INVALID_CUSTOMER_ID', () => pm.expect(body.error.code).to.eql('INVALID_CUSTOMER_ID'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "apikey",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": "{{customersUrl}}/abc/dashboard"
+          }
+        }
+      ]
+    },
+    {
       "name": "negative",
       "item": [
         {

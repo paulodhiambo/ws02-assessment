@@ -4,7 +4,7 @@ apictl project for the managed **Customers** API.
 
 | Item            | Value |
 |-----------------|-------|
-| Gateway URL     | `https://<gateway>:8243/jamii/customers/v1/{customerId}` |
+| Gateway URLs    | `https://<gateway>:8243/jamii/customers/v1/{customerId}`, `.../{customerId}/dashboard` (bonus A) |
 | Backend         | MI `CustomerAPI` at `${MI_BACKEND_FOR_APIM}/customers`, which proxies JSONPlaceholder `/users/{id}` |
 | Definition      | `Definitions/swagger.yaml` (OpenAPI 3.0, hand-written) |
 | Security        | OAuth2 (`Authorization: Bearer <token>`) |
