@@ -14,6 +14,7 @@ environment.
 | shared | correlation IDs, logging, masking, the common error envelope | `mi/common` |
 | 2 | apictl projects, OpenAPI definitions, custom policies, API Product | `apim/` |
 | 3 | `Jenkinsfile` + `scripts/` (build, test, all-or-nothing deploy) | root |
+| CI on GitHub | `.github/workflows/ci.yml`: the same stages on GitHub Actions, calling the same scripts | `.github/` |
 
 More detail: [architecture](docs/architecture.md) · [API design, mappings and error catalogue](docs/api-design.md) · [build and deploy](docs/deployment.md) · [demo script](docs/demo-script.md)
 

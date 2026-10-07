@@ -119,6 +119,19 @@ individual API. The scripts loop over all of them, and every deploy step
 either completes for all three or leaves the previous release in place, so
 there is no silent partial deploy.
 
+### GitHub Actions mirror
+
+`.github/workflows/ci.yml` runs the same stages on every push and pull request
+(GitHub-hosted `ubuntu-latest`, mock backends). Because both pipelines only
+call `scripts/`, they stay in step. Mapping:
+
+| Jenkins | GitHub Actions |
+|---------|----------------|
+| `archiveArtifacts` | `actions/upload-artifact` (`artifacts-<version>`, `logs-and-reports-<version>`) |
+| `input` approval before prod | the `prod` environment with required reviewers (Settings → Environments) |
+| `try/catch` MI restore | step with `if: failure() && steps.apim.outcome == 'failure'` |
+| `post { always }` | steps with `if: always()` |
+
 **Agent requirements:** Docker with compose, JDK, Maven, Python 3, curl,
 zip, rsync. Credentials in Jenkins are only needed for prod; dev uses the
 stock image defaults.
