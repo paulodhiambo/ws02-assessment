@@ -125,7 +125,8 @@ def main():
     print(f"wrote {out.relative_to(out.parents[2])}", file=sys.stderr)
 
     g = args.gateway
-    print(f"""
+    print(f"""export GW={g}/jamii TOKEN={access_token} APIKEY={api_key}
+
 # OAuth2 (Accounts, Customers) - token valid 1h
 curl -sk {g}/jamii/accounts/v1/0100000001/balance -H 'Authorization: Bearer {access_token}'
 curl -sk {g}/jamii/customers/v1/1 -H 'Authorization: Bearer {access_token}'

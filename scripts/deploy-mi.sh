@@ -13,6 +13,8 @@
 #      any faulty app, or a timeout, triggers a rollback to the backup
 #
 # Env: CAR_DIR (default mi/target/cars), MI_ADMIN_USER / MI_ADMIN_PASSWORD.
+# On success the replaced CARs are copied to target/mi-previous, so the
+# pipeline can restore them if a later step of the same release fails.
 set -euo pipefail
 SCRIPT_NAME=deploy-mi
 source "$(dirname "$0")/lib/common.sh"
@@ -21,7 +23,7 @@ ENV_NAME_ARG="dev"; DRY_RUN=false
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) ENV_NAME_ARG="$arg" ;;
   esac
 done
@@ -118,7 +120,12 @@ if ! wait_for_expected; then
   die "MI deployment failed; previous version restored"
 fi
 
+# Keep the replaced CARs on the host so a later failure in the same release
+# (e.g. the APIM import) can put MI back: CAR_DIR=target/mi-previous scripts/deploy-mi.sh
+PREVIOUS_DIR="$REPO_ROOT/target/mi-previous"
+rm -rf "$PREVIOUS_DIR" && mkdir -p "$PREVIOUS_DIR"
+compose cp "$MI_CONTAINER_SERVICE:$BACKUP_DIR/." "$PREVIOUS_DIR/" >/dev/null 2>&1 || true
 mi_sh "rm -rf '$STAGE_DIR' '$BACKUP_DIR'"
-log "all ${#CARS[@]} CARs active on $ENV_NAME"
+log "all ${#CARS[@]} CARs active on $ENV_NAME (previous set saved in target/mi-previous)"
 curl -skf -H "Authorization: Bearer $TOKEN" "$MI_MGMT_URL/apis" \
   | json_get "'\n'.join('  ' + a['name'] + '  ' + a['url'] for a in d['list'])" >&2

@@ -25,3 +25,7 @@ infrastructure/config/prod.env
 __pycache__/
 *.pyc
 tests/postman/apim.env.json
+
+# Local tools (apictl)
+.tools/
+.apictl/
