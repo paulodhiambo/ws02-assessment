@@ -5,11 +5,16 @@
 //	jamii apim-consumer [--apim URL] [--gateway URL] [--env-file FILE]
 //	jamii mi-apps state|undeployed|active [Name:version ...]   (reads GET /applications JSON on stdin)
 //	jamii json <path>                                          (reads JSON on stdin)
+//	jamii rabbit publish --routing-key K [--header k=v ...] [--content-type T] < body
+//	jamii rabbit get --queue Q [--count N]                     (consumes; prints one JSON message per line)
+//	jamii rabbit purge --queue Q
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -17,6 +22,7 @@ import (
 	"jamiisavings/tools/carpkg"
 	"jamiisavings/tools/jsonq"
 	"jamiisavings/tools/miapps"
+	"jamiisavings/tools/rabbitmgmt"
 )
 
 const usage = `usage: jamii <command> [args]
@@ -26,6 +32,7 @@ commands:
   apim-consumer   onboard the demo app via the Developer Portal REST API
   mi-apps         interpret MI's GET /applications response (stdin)
   json            print a value from JSON on stdin, e.g. jamii json error.code
+  rabbit          publish/get/purge RabbitMQ messages via the management API
 `
 
 func main() {
@@ -44,6 +51,8 @@ func main() {
 		err = miApps(args)
 	case "json":
 		err = jsonCmd(args)
+	case "rabbit":
+		err = rabbit(args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -131,4 +140,65 @@ func jsonCmd(args []string) error {
 	}
 	fmt.Println(strings.Join(values, "\n"))
 	return nil
+}
+
+type headerFlags map[string]string
+
+func (h headerFlags) String() string { return fmt.Sprint(map[string]string(h)) }
+func (h headerFlags) Set(v string) error {
+	k, val, ok := strings.Cut(v, "=")
+	if !ok {
+		return fmt.Errorf("header must be key=value, got %q", v)
+	}
+	h[k] = val
+	return nil
+}
+
+// rabbit uses RABBITMQ_MGMT_URL (default http://localhost:15672) and
+// RABBITMQ_USER / RABBITMQ_PASSWORD (default jamii / jamii-dev-only).
+func rabbit(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: jamii rabbit publish|get|purge [flags]")
+	}
+	client := rabbitmgmt.New(envOr("RABBITMQ_MGMT_URL", "http://localhost:15672"),
+		envOr("RABBITMQ_USER", "jamii"), envOr("RABBITMQ_PASSWORD", "jamii-dev-only"))
+	fs := flag.NewFlagSet("rabbit "+args[0], flag.ExitOnError)
+	exchange := fs.String("exchange", "loan.events", "exchange to publish to")
+	routingKey := fs.String("routing-key", "loan.applications", "routing key")
+	contentType := fs.String("content-type", "", "AMQP content_type (default: none)")
+	queue := fs.String("queue", "", "queue name")
+	count := fs.Int("count", 10, "maximum messages to get")
+	headers := headerFlags{}
+	fs.Var(headers, "header", "AMQP header key=value (repeatable)")
+	_ = fs.Parse(args[1:])
+
+	switch args[0] {
+	case "publish":
+		body, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		return client.Publish(*exchange, *routingKey, strings.TrimRight(string(body), "\n"), *contentType, headers)
+	case "get":
+		if *queue == "" {
+			return fmt.Errorf("--queue is required")
+		}
+		msgs, err := client.Get(*queue, *count)
+		if err != nil {
+			return err
+		}
+		enc := json.NewEncoder(os.Stdout)
+		for _, m := range msgs {
+			if err := enc.Encode(m); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "purge":
+		if *queue == "" {
+			return fmt.Errorf("--queue is required")
+		}
+		return client.Purge(*queue)
+	}
+	return fmt.Errorf("unknown rabbit command %q", args[0])
 }

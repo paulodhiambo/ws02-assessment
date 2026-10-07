@@ -55,9 +55,11 @@ func TestEveryEndpointHasATimeout(t *testing.T) {
 			t.Errorf("%s: endpoint without timeout", a.File)
 			continue
 		}
+		// 12s ceiling: the event consumer's call to the loan API must outlast
+		// that API's own 10s SOAP timeout; everything else is 5-10s.
 		ms, err := strconv.Atoi(strings.TrimSpace(timeout.Child("duration").Text))
-		if err != nil || ms > 10000 {
-			t.Errorf("%s: timeout must be a number of ms <= 10000, got %q", a.File, timeout.Child("duration").Text)
+		if err != nil || ms > 12000 {
+			t.Errorf("%s: timeout must be a number of ms <= 12000, got %q", a.File, timeout.Child("duration").Text)
 		}
 	}
 }

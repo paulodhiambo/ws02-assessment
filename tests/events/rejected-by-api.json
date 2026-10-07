@@ -1,0 +1,1 @@
+{"eventType":"LoanApplicationSubmitted","applicationId":"APP-BAD-3","applicant":{"customerId":"1","monthlyIncome":120000},"loan":{"amount":3000000000,"tenureMonths":12}}

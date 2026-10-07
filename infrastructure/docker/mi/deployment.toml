@@ -21,6 +21,18 @@ algorithm = "AES"
 [transport.http]
 socket_timeout = 60000
 
+# Bonus B: publishing to RabbitMQ (decisions and dead letters). The consumer
+# side is the LoanApplicationInbound inbound endpoint.
+[transport.rabbitmq]
+sender_enable = true
+
+[[transport.rabbitmq.sender]]
+name = "AMQPConnectionFactory"
+parameter.hostname = "$env{RABBITMQ_HOST}"
+parameter.port = 5672
+parameter.username = "$env{RABBITMQ_USER}"
+parameter.password = "$env{RABBITMQ_PASSWORD}"
+
 [synapse_properties]
 # Endpoint timeouts are enforced by a background sweeper; the default 15s
 # interval would turn a 5s endpoint timeout into ~15s.

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Part 1c REST API (POST /loans/eligibility) on this MI instance. Going
+  through the API, rather than re-implementing the SOAP call, means events get
+  exactly the same validation, mapping and SOAP fault handling as REST callers.
+
+  12s timeout: longer than the API's own 10s SOAP timeout, so a slow SOAP
+  backend surfaces as the API's 504 (a clean, retryable answer) rather than as
+  a timeout here.
+-->
+<endpoint name="LoanEligibilityInternalEP" xmlns="http://ws.apache.org/ns/synapse">
+    <http method="post" uri-template="http://localhost:8290/loans/eligibility">
+        <timeout>
+            <duration>12000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <markForSuspension>
+            <errorCodes>-1</errorCodes>
+        </markForSuspension>
+        <suspendOnFailure>
+            <errorCodes>-1</errorCodes>
+        </suspendOnFailure>
+    </http>
+</endpoint>

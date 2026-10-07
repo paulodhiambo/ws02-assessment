@@ -1,0 +1,1 @@
+{"eventType":"LoanApplicationSubmitted","applicationId":"APP-1001","submittedAt":"2026-10-07T10:00:00Z","applicant":{"customerId":"1","monthlyIncome":120000,"existingMonthlyDebt":15000},"loan":{"amount":500000,"tenureMonths":12,"currency":"KES"}}

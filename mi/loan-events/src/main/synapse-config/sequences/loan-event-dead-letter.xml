@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Permanent failure: publishes the ORIGINAL event body, unchanged, to
+  loan.applications.dlq with the reason in headers, then lets the inbound
+  endpoint ack it (no retry: the same input would fail the same way).
+
+  Inputs: ORIGINAL_EVENT, DLQ_CODE, DLQ_REASON.
+  If publishing itself fails, loan-event-error rejects the message instead,
+  so it is never lost (broker retry path, then MI's error exchange).
+-->
+<sequence name="loan-event-dead-letter" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <property name="STAGE" value="DEAD_LETTER" scope="default" type="STRING"/>
+    <log category="WARN" level="custom" separator=", ">
+        <property name="event" value="DEAD_LETTERED"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="code" expression="get-property('DLQ_CODE')"/>
+        <property name="reason" expression="get-property('DLQ_REASON')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <payloadFactory media-type="xml">
+        <format>
+            <text xmlns="http://ws.apache.org/commons/ns/payload">$1</text>
+        </format>
+        <args>
+            <arg evaluator="xml" expression="get-property('ORIGINAL_EVENT')"/>
+        </args>
+    </payloadFactory>
+    <property name="messageType" value="text/plain" scope="axis2" type="STRING"/>
+    <property name="ContentType" value="text/plain" scope="axis2" type="STRING"/>
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <header name="x-error-code" scope="transport" expression="get-property('DLQ_CODE')"/>
+    <header name="x-error-reason" scope="transport" expression="get-property('DLQ_REASON')"/>
+    <header name="x-correlation-id" scope="transport" expression="get-property('CORRELATION_ID')"/>
+    <header name="x-source-queue" scope="transport" value="loan.applications"/>
+    <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+    <call>
+        <endpoint key="LoanEventsDeadLetterEP"/>
+    </call>
+</sequence>

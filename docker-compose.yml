@@ -40,6 +40,22 @@ services:
     ports:
       - "8088:8088"
 
+  rabbitmq:
+    # Bonus B: loan-application events. Topology (exchange, retry and dead-letter
+    # queues) comes from infrastructure/docker/rabbitmq/definitions.json.
+    image: rabbitmq:4.1-management-alpine
+    volumes:
+      - ./infrastructure/docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/20-jamii.conf:ro
+      - ./infrastructure/docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI / HTTP API (jamii / jamii-dev-only)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   mi:
     build:
       context: ./infrastructure/docker/mi
@@ -49,6 +65,9 @@ services:
       ACCOUNTS_DB_PASSWORD: ${ACCOUNTS_DB_PASSWORD:-change-me-app}
       CUSTOMER_BACKEND_URL: ${CUSTOMER_BACKEND_URL:-https://jsonplaceholder.typicode.com}
       LOAN_SOAP_BACKEND_URL: ${LOAN_SOAP_BACKEND_URL:-http://www.dneonline.com/calculator.asmx}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-jamii}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-jamii-dev-only}
     ports:
       - "8290:8290"   # HTTP APIs
       - "8253:8253"   # HTTPS APIs
@@ -63,6 +82,8 @@ services:
         condition: service_started
       soap-mock:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   apim:
     image: wso2/wso2am:4.6.0

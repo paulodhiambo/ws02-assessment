@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Bonus B: handles one LoanApplicationSubmitted event from loan.applications.
+
+    1. keep the raw body (for the DLQ), parse it as JSON, validate the schema
+    2. transform the event into a Part 1c eligibility request and call
+       POST /loans/eligibility (blocking, so the ack decision waits for the result)
+    3. 200        -> publish LoanEligibilityDecided to loan.decisions, ack
+       4xx        -> permanent: park in the DLQ with the API's error code, ack
+       5xx/fault  -> transient: reject, so the broker retries every 5s (3 retries, then DLQ)
+
+  Event:
+    {"eventType":"LoanApplicationSubmitted","applicationId":"APP-1001",
+     "submittedAt":"2026-10-07T10:00:00Z",
+     "applicant":{"customerId":"1","monthlyIncome":120000,"existingMonthlyDebt":15000},
+     "loan":{"amount":500000,"tenureMonths":12,"currency":"KES"}}
+-->
+<sequence name="loan-event-process" onError="loan-event-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <property name="API_NAME" value="LoanApplicationEvents" scope="default" type="STRING"/>
+    <property name="OPERATION" value="consume loan.applications" scope="default" type="STRING"/>
+    <property name="STAGE" value="VALIDATION" scope="default" type="STRING"/>
+    <property name="ORIGINAL_EVENT" expression="string($body/*[1])" scope="default" type="STRING"/>
+
+    <!-- AMQP header names are case-sensitive; accept the usual lower-case form. -->
+    <filter xpath="string-length($trp:x-correlation-id) &gt; 0">
+        <then>
+            <header name="X-Correlation-ID" scope="transport" expression="$trp:x-correlation-id"/>
+        </then>
+    </filter>
+    <sequence key="correlation"/>
+    <property name="LOG_SUBJECT" value="application=unparsed" scope="default" type="STRING"/>
+    <sequence key="request-logging"/>
+
+    <!-- Parse: a body that is not JSON fails here and goes to loan-event-error (STAGE=VALIDATION). -->
+    <payloadFactory media-type="json">
+        <format>$1</format>
+        <args>
+            <arg evaluator="xml" expression="get-property('ORIGINAL_EVENT')"/>
+        </args>
+    </payloadFactory>
+    <validate cache-schema="true">
+        <schema key="LoanApplicationEventSchema"/>
+        <on-fail>
+            <property name="DLQ_CODE" value="INVALID_EVENT" scope="default" type="STRING"/>
+            <property name="DLQ_REASON" value="Event does not match the LoanApplicationSubmitted schema." scope="default" type="STRING"/>
+            <sequence key="loan-event-dead-letter"/>
+            <drop/>
+        </on-fail>
+    </validate>
+
+    <property name="APPLICATION_ID" expression="json-eval($.applicationId)" scope="default" type="STRING"/>
+    <property name="CUSTOMER_ID" expression="json-eval($.applicant.customerId)" scope="default" type="STRING"/>
+    <property name="MONTHLY_INCOME" expression="json-eval($.applicant.monthlyIncome)" scope="default" type="STRING"/>
+    <property name="EXISTING_DEBT" expression="json-eval($.applicant.existingMonthlyDebt)" scope="default" type="STRING"/>
+    <property name="REQUESTED_AMOUNT" expression="json-eval($.loan.amount)" scope="default" type="STRING"/>
+    <property name="TENURE_MONTHS" expression="json-eval($.loan.tenureMonths)" scope="default" type="STRING"/>
+    <filter xpath="string(number(get-property('EXISTING_DEBT'))) = 'NaN'">
+        <then>
+            <property name="EXISTING_DEBT" value="0" scope="default" type="STRING"/>
+        </then>
+    </filter>
+    <property name="MASK_INPUT" expression="get-property('CUSTOMER_ID')" scope="default" type="STRING"/>
+    <sequence key="mask-sensitive-data"/>
+    <property name="LOG_SUBJECT" scope="default" type="STRING"
+              expression="concat('application=', get-property('APPLICATION_ID'), ' customer=', get-property('MASKED_VALUE'))"/>
+
+    <!-- Transform the event into the Part 1c REST request and call the API. -->
+    <payloadFactory media-type="json">
+        <format>{"customerId":"$1","monthlyIncome":$2,"existingMonthlyDebt":$3,"requestedAmount":$4,"tenureMonths":$5}</format>
+        <args>
+            <arg evaluator="xml" expression="get-property('CUSTOMER_ID')"/>
+            <arg evaluator="xml" expression="get-property('MONTHLY_INCOME')"/>
+            <arg evaluator="xml" expression="get-property('EXISTING_DEBT')"/>
+            <arg evaluator="xml" expression="get-property('REQUESTED_AMOUNT')"/>
+            <arg evaluator="xml" expression="get-property('TENURE_MONTHS')"/>
+        </args>
+    </payloadFactory>
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <header name="X-Correlation-ID" scope="transport" expression="get-property('CORRELATION_ID')"/>
+    <property name="STAGE" value="BACKEND_CALL" scope="default" type="STRING"/>
+    <property name="BACKEND_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
+    <log category="INFO" level="custom" separator=", ">
+        <property name="event" value="BACKEND_CALL"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="backend" value="POST /loans/eligibility"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <!-- A blocking call faults on any non-2xx by default; let the API's own
+         error statuses through so the switch below can classify them. -->
+    <property name="non.error.http.status.codes" value="400,404,415,422,500,502,503,504" scope="axis2" type="STRING"/>
+    <call blocking="true">
+        <endpoint key="LoanEligibilityInternalEP"/>
+    </call>
+    <property name="STAGE" value="MAPPING" scope="default" type="STRING"/>
+    <log category="INFO" level="custom" separator=", ">
+        <property name="event" value="BACKEND_RESPONSE"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="backendStatus" expression="$axis2:HTTP_SC"/>
+        <property name="latencyMs" expression="string(number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START')))"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+
+    <switch source="$axis2:HTTP_SC">
+        <case regex="200">
+            <property name="RESPONSE_TIMESTAMP" scope="default" type="STRING"
+                      expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+            <payloadFactory media-type="json">
+                <format>{"eventType":"LoanEligibilityDecided","applicationId":"$1","customerId":"$2","eligible":$3,"decision":"$4","reason":"$5","loan":$6,"eligibilityRequestId":"$7","correlationId":"$8","decidedAt":"$9"}</format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('APPLICATION_ID')"/>
+                    <arg evaluator="json" expression="$.customerId"/>
+                    <arg evaluator="json" expression="$.eligible"/>
+                    <arg evaluator="json" expression="$.decision"/>
+                    <arg evaluator="json" expression="$.reason"/>
+                    <arg evaluator="json" expression="$.loan"/>
+                    <arg evaluator="json" expression="$.requestId"/>
+                    <arg evaluator="xml" expression="get-property('CORRELATION_ID')"/>
+                    <arg evaluator="xml" expression="get-property('RESPONSE_TIMESTAMP')"/>
+                </args>
+            </payloadFactory>
+            <property name="DECISION" expression="json-eval($.decision)" scope="default" type="STRING"/>
+            <property name="STAGE" value="PUBLISH" scope="default" type="STRING"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="x-correlation-id" scope="transport" expression="get-property('CORRELATION_ID')"/>
+            <header name="x-application-id" scope="transport" expression="get-property('APPLICATION_ID')"/>
+            <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+            <call>
+                <endpoint key="LoanDecisionsPublisherEP"/>
+            </call>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="EVENT_OUT"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+                <property name="published" value="loan.decisions"/>
+                <property name="decision" expression="get-property('DECISION')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+        </case>
+        <case regex="4[0-9][0-9]">
+            <!-- The API rejected the request: retrying cannot help. -->
+            <property name="DLQ_CODE" expression="json-eval($.error.code)" scope="default" type="STRING"/>
+            <property name="DLQ_REASON" expression="json-eval($.error.message)" scope="default" type="STRING"/>
+            <sequence key="loan-event-dead-letter"/>
+        </case>
+        <default>
+            <property name="RETRY_REASON" expression="concat('eligibility API returned ', $axis2:HTTP_SC)" scope="default" type="STRING"/>
+            <sequence key="loan-event-retry"/>
+        </default>
+    </switch>
+</sequence>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  onError handler for LoanApplicationInbound / loan-event-process.
+
+    STAGE=VALIDATION   body is not JSON           -> DLQ (MALFORMED_EVENT), ack
+    STAGE=DEAD_LETTER  could not publish to DLQ   -> reject (broker keeps it)
+    anything else      timeout, connection error,
+                       publish failure            -> reject (retry)
+-->
+<sequence name="loan-event-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="ERROR" level="custom" separator=", ">
+        <property name="event" value="FAULT"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="stage" expression="get-property('STAGE')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="errorCode" expression="get-property('ERROR_CODE')"/>
+        <property name="errorMessage" expression="get-property('ERROR_MESSAGE')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <switch source="get-property('STAGE')">
+        <case regex="VALIDATION">
+            <property name="DLQ_CODE" value="MALFORMED_EVENT" scope="default" type="STRING"/>
+            <property name="DLQ_REASON" value="Body is not valid JSON." scope="default" type="STRING"/>
+            <sequence key="loan-event-dead-letter"/>
+        </case>
+        <default>
+            <property name="RETRY_REASON" expression="concat(get-property('STAGE'), ' failed: ', get-property('ERROR_CODE'))" scope="default" type="STRING"/>
+            <sequence key="loan-event-retry"/>
+        </default>
+    </switch>
+</sequence>

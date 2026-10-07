@@ -2,7 +2,7 @@
 // (.car) archives.
 //
 // Each module directory (common, account-balance, customer-proxy,
-// loan-eligibility) becomes one CAR. Artifacts are discovered by folder
+// loan-eligibility, loan-events) becomes one CAR. Artifacts are discovered by folder
 // convention:
 //
 //	<module>/src/main/synapse-config/api/*.xml           -> synapse/api
@@ -10,6 +10,7 @@
 //	<module>/src/main/synapse-config/endpoints/*.xml     -> synapse/endpoint
 //	<module>/src/main/synapse-config/local-entries/*.xml -> synapse/local-entry
 //	<module>/src/main/synapse-config/templates/*.xml     -> synapse/template
+//	<module>/src/main/synapse-config/inbound-endpoints/*.xml -> synapse/inbound-endpoint
 //	<module>/src/main/dataservice/*.dbs                  -> service/dataservice
 //	common/sequences/*.xml                               -> synapse/sequence
 //
@@ -50,6 +51,7 @@ var Modules = []Module{
 	{"account-balance", "JamiiAccountBalance"},
 	{"customer-proxy", "JamiiCustomerProxy"},
 	{"loan-eligibility", "JamiiLoanEligibility"},
+	{"loan-events", "JamiiLoanEvents"},
 }
 
 // synapseFolders maps a folder to its artifact type, in packaging order.
@@ -59,6 +61,8 @@ var synapseFolders = []struct{ folder, typ string }{
 	{"sequences", "synapse/sequence"},
 	{"templates", "synapse/template"},
 	{"api", "synapse/api"},
+	// Inbound endpoints last: they start consuming as soon as they deploy.
+	{"inbound-endpoints", "synapse/inbound-endpoint"},
 }
 
 // Artifact is one deployable file.

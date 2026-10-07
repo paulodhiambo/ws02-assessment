@@ -99,6 +99,7 @@ pipeline {
                 sh 'scripts/apim-demo-consumer.sh'          // Dev Portal onboarding: app, subscriptions, keys
                 sh 'scripts/test.sh --integration --apim'   // same suite through the gateway (OAuth2 + API key)
                 sh 'scripts/test.sh --chaos'                // DB / backend outages map to the right errors
+                sh 'scripts/test.sh --events'               // bonus B: RabbitMQ consumer, DLQ, retries
             }
             post {
                 always {
@@ -142,7 +143,7 @@ pipeline {
         always {
             sh '''
                 mkdir -p target/logs
-                for s in mi apim customer-mock soap-mock; do docker compose logs --no-color "$s" > "target/logs/$s.log" 2>&1 || true; done
+                for s in mi apim customer-mock soap-mock rabbitmq; do docker compose logs --no-color "$s" > "target/logs/$s.log" 2>&1 || true; done
             '''
             archiveArtifacts artifacts: 'target/logs/*.log', allowEmptyArchive: true
             script {

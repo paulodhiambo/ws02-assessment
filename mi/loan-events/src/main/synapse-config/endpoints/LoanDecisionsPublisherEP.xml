@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Publishes LoanEligibilityDecided events to loan.events / loan.decisions.
+  Topology is owned by the broker definitions, so nothing is auto-declared.
+-->
+<endpoint name="LoanDecisionsPublisherEP" xmlns="http://ws.apache.org/ns/synapse">
+    <address uri="rabbitmq:/AMQPProducer?rabbitmq.connection.factory=AMQPConnectionFactory&amp;rabbitmq.exchange.name=loan.events&amp;rabbitmq.queue.routing.key=loan.decisions&amp;rabbitmq.exchange.autodeclare=false&amp;rabbitmq.queue.autodeclare=false&amp;rabbitmq.message.content.type=application/json">
+        <timeout>
+            <duration>5000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+    </address>
+</endpoint>

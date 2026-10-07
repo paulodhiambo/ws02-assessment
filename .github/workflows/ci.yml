@@ -88,11 +88,14 @@ jobs:
       - name: Chaos tests (DB and backend outages)
         run: scripts/test.sh --chaos
 
+      - name: Event tests (bonus B - RabbitMQ consumer, DLQ, retries)
+        run: scripts/test.sh --events
+
       - name: Collect container logs
         if: always()
         run: |
           mkdir -p target/logs
-          for s in mi apim customer-mock soap-mock accounts-db; do
+          for s in mi apim customer-mock soap-mock accounts-db rabbitmq; do
             docker compose logs --no-color "$s" > "target/logs/$s.log" 2>&1 || true
           done
 

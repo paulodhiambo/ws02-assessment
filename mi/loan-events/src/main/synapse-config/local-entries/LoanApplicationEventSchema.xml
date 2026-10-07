@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JSON Schema (draft-04) for LoanApplicationSubmitted events on
+  loan.applications. Events that fail it are permanent failures: they go
+  straight to the DLQ with x-error-code INVALID_EVENT, without retries.
+-->
+<localEntry key="LoanApplicationEventSchema" xmlns="http://ws.apache.org/ns/synapse"><![CDATA[{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "LoanApplicationSubmitted",
+  "type": "object",
+  "required": ["eventType", "applicationId", "applicant", "loan"],
+  "properties": {
+    "eventType":     { "type": "string", "enum": ["LoanApplicationSubmitted"] },
+    "applicationId": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,40}$" },
+    "submittedAt":   { "type": "string" },
+    "applicant": {
+      "type": "object",
+      "required": ["customerId", "monthlyIncome"],
+      "properties": {
+        "customerId":          { "type": "string", "pattern": "^[A-Za-z0-9-]{1,20}$" },
+        "monthlyIncome":       { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+        "existingMonthlyDebt": { "type": "number", "minimum": 0 }
+      }
+    },
+    "loan": {
+      "type": "object",
+      "required": ["amount", "tenureMonths"],
+      "properties": {
+        "amount":       { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+        "tenureMonths": { "type": "integer", "minimum": 1, "maximum": 360 },
+        "currency":     { "type": "string", "enum": ["KES"] }
+      }
+    }
+  }
+}]]></localEntry>

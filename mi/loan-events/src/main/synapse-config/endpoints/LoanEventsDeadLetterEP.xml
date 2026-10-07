@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Parks unprocessable events on loan.applications.dlq: the original body,
+  byte-for-byte, with x-error-code / x-error-reason / x-correlation-id headers.
+-->
+<endpoint name="LoanEventsDeadLetterEP" xmlns="http://ws.apache.org/ns/synapse">
+    <address uri="rabbitmq:/AMQPProducer?rabbitmq.connection.factory=AMQPConnectionFactory&amp;rabbitmq.exchange.name=loan.events&amp;rabbitmq.queue.routing.key=loan.applications.dlq&amp;rabbitmq.exchange.autodeclare=false&amp;rabbitmq.queue.autodeclare=false&amp;rabbitmq.message.content.type=text/plain">
+        <timeout>
+            <duration>5000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+    </address>
+</endpoint>

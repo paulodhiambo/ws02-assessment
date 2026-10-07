@@ -1,0 +1,39 @@
+{
+  "users": [
+    { "name": "jamii", "password": "jamii-dev-only", "tags": ["administrator"] }
+  ],
+  "vhosts": [{ "name": "/" }],
+  "permissions": [
+    { "user": "jamii", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "exchanges": [
+    { "name": "loan.events", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "queues": [
+    {
+      "name": "loan.applications", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic",
+        "x-dead-letter-exchange": "loan.events",
+        "x-dead-letter-routing-key": "loan.applications.retry"
+      }
+    },
+    {
+      "name": "loan.applications.retry", "vhost": "/", "durable": true, "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic",
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "loan.events",
+        "x-dead-letter-routing-key": "loan.applications"
+      }
+    },
+    { "name": "loan.applications.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } },
+    { "name": "loan.decisions", "vhost": "/", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } }
+  ],
+  "bindings": [
+    { "source": "loan.events", "vhost": "/", "destination": "loan.applications", "destination_type": "queue", "routing_key": "loan.applications", "arguments": {} },
+    { "source": "loan.events", "vhost": "/", "destination": "loan.applications.retry", "destination_type": "queue", "routing_key": "loan.applications.retry", "arguments": {} },
+    { "source": "loan.events", "vhost": "/", "destination": "loan.applications.dlq", "destination_type": "queue", "routing_key": "loan.applications.dlq", "arguments": {} },
+    { "source": "loan.events", "vhost": "/", "destination": "loan.decisions", "destination_type": "queue", "routing_key": "loan.decisions", "arguments": {} }
+  ]
+}

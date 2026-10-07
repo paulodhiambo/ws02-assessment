@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Transient failure (eligibility API 5xx, timeout, connection error): reject
+  the message without requeue. The queue's dead-letter exchange moves it to
+  loan.applications.retry, whose 5s TTL routes it back to loan.applications.
+  After 3 retries (x-death count) the inbound endpoint publishes it to the
+  DLQ instead and acks it, so a permanently broken dependency cannot cause an
+  endless loop.
+-->
+<sequence name="loan-event-retry" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="WARN" level="custom" separator=", ">
+        <property name="event" value="RETRY_SCHEDULED"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="reason" expression="get-property('RETRY_REASON')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <property name="SET_ROLLBACK_ONLY" value="true" scope="default" type="STRING"/>
+</sequence>

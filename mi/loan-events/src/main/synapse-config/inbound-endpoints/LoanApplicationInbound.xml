@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Bonus B: consumes LoanApplicationSubmitted events from RabbitMQ.
+
+  Acknowledgement (manual, decided after mediation):
+    - sequence completes normally          -> ack (decision published, or the
+                                              message was parked in the DLQ)
+    - sequence sets SET_ROLLBACK_ONLY      -> reject without requeue: the queue's
+                                              dead-letter exchange routes it to
+                                              loan.applications.retry (5s TTL),
+                                              which routes it back here
+    - after the 3rd retry fails (x-death)  -> MI publishes it to the error
+                                              exchange/routing key (the DLQ) and acks
+
+  Bodies are read as text/plain so a malformed JSON body can still be captured
+  byte-for-byte for the DLQ; loan-event-process parses it explicitly.
+  qos=1 with a sequential consumer keeps processing in order, one at a time.
+-->
+<inboundEndpoint name="LoanApplicationInbound" protocol="rabbitmq" sequence="loan-event-process"
+                 onError="loan-event-error" suspend="false" xmlns="http://ws.apache.org/ns/synapse">
+    <parameters>
+        <parameter name="sequential">true</parameter>
+        <parameter name="coordination">true</parameter>
+        <parameter name="rabbitmq.connection.factory">AMQPConnectionFactory</parameter>
+        <parameter name="rabbitmq.server.host.name">$SYSTEM:RABBITMQ_HOST</parameter>
+        <parameter name="rabbitmq.server.port">5672</parameter>
+        <parameter name="rabbitmq.server.user.name">$SYSTEM:RABBITMQ_USER</parameter>
+        <parameter name="rabbitmq.server.password">$SYSTEM:RABBITMQ_PASSWORD</parameter>
+        <parameter name="rabbitmq.queue.name">loan.applications</parameter>
+        <parameter name="rabbitmq.queue.autodeclare">false</parameter>
+        <parameter name="rabbitmq.exchange.autodeclare">false</parameter>
+        <parameter name="rabbitmq.queue.auto.ack">false</parameter>
+        <parameter name="rabbitmq.channel.consumer.qos">1</parameter>
+        <parameter name="rabbitmq.message.content.type">text/plain</parameter>
+        <!-- MI parks the message once x-death count > this value: 2 = first attempt + 3 retries. -->
+        <parameter name="rabbitmq.message.max.dead.lettered.count">2</parameter>
+        <parameter name="rabbitmq.message.error.exchange.name">loan.events</parameter>
+        <parameter name="rabbitmq.message.error.queue.routing.key">loan.applications.dlq</parameter>
+        <parameter name="rabbitmq.connection.retry.interval">5000</parameter>
+        <parameter name="rabbitmq.connection.retry.count">-1</parameter>
+    </parameters>
+</inboundEndpoint>

@@ -16,7 +16,7 @@ import (
 )
 
 // Modules in the order they are packaged.
-var Modules = []string{"common", "account-balance", "customer-proxy", "loan-eligibility"}
+var Modules = []string{"common", "account-balance", "customer-proxy", "loan-eligibility", "loan-events"}
 
 // ErrorEnvelopeKeys are the JSON keys every error response must contain.
 var ErrorEnvelopeKeys = []string{"error", "code", "message", "status", "requestId", "correlationId", "timestamp"}
