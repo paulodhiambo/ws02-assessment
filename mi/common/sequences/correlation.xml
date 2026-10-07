@@ -13,6 +13,21 @@
 <sequence name="correlation" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
     <property name="REQUEST_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
     <property name="REQUEST_ID" expression="substring-after(get-property('MessageID'), 'urn:uuid:')" scope="default" type="STRING"/>
+    <!-- Messages from inbound endpoints (e.g. RabbitMQ) have no HTTP MessageID: generate a v4 UUID. -->
+    <filter xpath="string-length(get-property('REQUEST_ID')) = 0">
+        <then>
+            <script language="js"><![CDATA[
+                var hex = "0123456789abcdef", id = "";
+                for (var i = 0; i < 36; i++) {
+                    id += (i === 8 || i === 13 || i === 18 || i === 23) ? "-"
+                        : (i === 14) ? "4"
+                        : (i === 19) ? hex.charAt(8 + Math.floor(Math.random() * 4))
+                        : hex.charAt(Math.floor(Math.random() * 16));
+                }
+                mc.setProperty("REQUEST_ID", id);
+            ]]></script>
+        </then>
+    </filter>
     <property name="CORRELATION_ID" expression="$trp:X-Correlation-ID" scope="default" type="STRING"/>
     <filter source="get-property('CORRELATION_ID')" regex="[A-Za-z0-9._\-]{8,64}">
         <then/>
