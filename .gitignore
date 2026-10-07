@@ -1,0 +1,22 @@
+# Build output
+target/
+dist/
+*.car
+*.zip
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Env / secrets
+.env
+infrastructure/config/prod.env
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# apictl local state
+.wso2apictl/
