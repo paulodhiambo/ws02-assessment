@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dashboard branch 2: the customer's accounts from AccountsDataService
+  (MySQL returns them as a ready-made JSON array).
+    {"section":"accounts","ok":true,"data":[...]}
+  A database failure becomes an ok:false section via dashboard-section-error.
+-->
+<sequence name="dashboard-accounts-section" onError="dashboard-section-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <property name="SECTION" value="accounts" scope="default" type="STRING"/>
+    <dataServiceCall serviceName="AccountsDataService">
+        <operations type="single">
+            <operation name="getAccountsByCustomer">
+                <param name="customerId" evaluator="xml" expression="get-property('uri.var.customerId')"/>
+            </operation>
+        </operations>
+        <source type="inline"/>
+        <target type="body"/>
+    </dataServiceCall>
+    <payloadFactory media-type="json">
+        <format>{"section":"accounts","ok":true,"data":$1}</format>
+        <args>
+            <arg xmlns:acc="http://ds.jamiisavings.co.ke/accounts" evaluator="xml" expression="string(//acc:accountsJson)"/>
+        </args>
+    </payloadFactory>
+</sequence>

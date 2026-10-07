@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dashboard branch 1: the customer profile. Always ends with a section
+  object (never a fault), so the aggregator gets both branches:
+    {"section":"customer","ok":true,"data":{...}}
+    {"section":"customer","ok":false,"code":"...","message":"..."}
+  Transport failures (timeout, refused) are turned into a section by
+  dashboard-section-error via onError.
+-->
+<sequence name="dashboard-customer-section" onError="dashboard-section-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <property name="SECTION" value="customer" scope="default" type="STRING"/>
+    <header name="Authorization" scope="transport" action="remove"/>
+    <header name="Cookie" scope="transport" action="remove"/>
+    <header name="apikey" scope="transport" action="remove"/>
+    <header name="X-JWT-Assertion" scope="transport" action="remove"/>
+    <header name="Accept-Encoding" scope="transport" action="remove"/>
+    <header name="Accept" scope="transport" value="application/json"/>
+    <property name="uri.var.customerBackendUrl" expression="get-property('env', 'CUSTOMER_BACKEND_URL')" scope="default" type="STRING"/>
+    <call>
+        <endpoint key="CustomerBackendEP"/>
+    </call>
+    <switch source="$axis2:HTTP_SC">
+        <case regex="200">
+            <payloadFactory media-type="json">
+                <format>{"section":"customer","ok":true,"data":{"id":$1,"name":"$2","email":"$3","phone":"$4"}}</format>
+                <args>
+                    <arg evaluator="json" expression="$.id"/>
+                    <arg evaluator="json" expression="$.name"/>
+                    <arg evaluator="json" expression="$.email"/>
+                    <arg evaluator="json" expression="$.phone"/>
+                </args>
+            </payloadFactory>
+        </case>
+        <case regex="404">
+            <payloadFactory media-type="json">
+                <format>{"section":"customer","ok":false,"code":"CUSTOMER_NOT_FOUND","message":"No customer exists with the given id."}</format>
+                <args/>
+            </payloadFactory>
+        </case>
+        <default>
+            <payloadFactory media-type="json">
+                <format>{"section":"customer","ok":false,"code":"CUSTOMER_BACKEND_ERROR","message":"The customer service returned an unexpected response."}</format>
+                <args/>
+            </payloadFactory>
+        </default>
+    </switch>
+</sequence>

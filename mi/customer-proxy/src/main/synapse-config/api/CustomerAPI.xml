@@ -102,4 +102,134 @@
             </switch>
         </inSequence>
     </resource>
+    <!--
+      Bonus A - GET /customers/{customerId}/dashboard
+
+      Calls the customer backend and the accounts database in parallel
+      (scatter-gather) and merges the results:
+
+      {"customerId":"1","partial":false,"customer":{id,name,email,phone},
+       "accounts":[{accountNumber,type,status,balance{amount,currency}}],
+       "errors":[], "requestId":"...", "timestamp":"..."}
+
+      Failure policy: partial data, not all-or-nothing. If one section fails
+      or misses the 7s deadline, the response is still 200 with that section
+      null, "partial": true and the reason in "errors" (same codes as the
+      single APIs). Whole-response errors only when nothing useful is left:
+      unknown customer -> 404 CUSTOMER_NOT_FOUND, both sections failed ->
+      503 DASHBOARD_UNAVAILABLE.
+    -->
+    <resource methods="GET" uri-template="/{customerId}/dashboard" faultSequence="customer-fault">
+        <inSequence>
+            <property name="API_NAME" value="CustomerDashboard" scope="default" type="STRING"/>
+            <property name="OPERATION" value="GET /customers/{customerId}/dashboard" scope="default" type="STRING"/>
+            <sequence key="correlation"/>
+            <property name="MASK_INPUT" expression="get-property('uri.var.customerId')" scope="default" type="STRING"/>
+            <sequence key="mask-sensitive-data"/>
+            <property name="LOG_SUBJECT" expression="concat('customer=', get-property('MASKED_VALUE'))" scope="default" type="STRING"/>
+            <sequence key="request-logging"/>
+
+            <filter source="get-property('uri.var.customerId')" regex="[1-9][0-9]{0,8}">
+                <then/>
+                <else>
+                    <property name="ERROR_STATUS" value="400" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="INVALID_CUSTOMER_ID" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="customerId must be a positive integer." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+
+            <property name="STAGE" value="BACKEND_CALL" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_CALL"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backend" value="customer backend + AccountsDataService (parallel)"/>
+                <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+            <!-- Each branch ends with a {"section": ...} object; a failed branch is
+                 dropped by its onError handler, and the 7s timeout is the deadline.
+                 The third branch answers immediately: the aggregation timer only
+                 starts with the first message, so without it a request where both
+                 real branches fail would never complete. -->
+            <scatter-gather parallel-execution="true" target="Body" result-content-type="JSON">
+                <aggregation expression="${payload}" timeout="7000" min-messages="3" max-messages="3"/>
+                <sequence>
+                    <payloadFactory media-type="json">
+                        <format>{"section":"heartbeat","ok":true}</format>
+                        <args/>
+                    </payloadFactory>
+                </sequence>
+                <sequence>
+                    <sequence key="dashboard-customer-section"/>
+                </sequence>
+                <sequence>
+                    <sequence key="dashboard-accounts-section"/>
+                </sequence>
+            </scatter-gather>
+
+            <property name="STAGE" value="MAPPING" scope="default" type="STRING"/>
+            <property name="RESPONSE_TIMESTAMP" scope="default" type="STRING"
+                      expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+            <script language="js"><![CDATA[
+                var raw = mc.getPayloadJSON();
+                var list = raw ? JSON.parse(JSON.stringify(raw)) : [];
+                if (!Array.isArray(list)) { list = [list]; }
+                var byName = {};
+                list.forEach(function (s) { if (s && s.section) { byName[s.section] = s; } });
+                var errors = [];
+                function take(name, missingCode, missingMessage) {
+                    var s = byName[name];
+                    if (!s) { errors.push({section: name, code: missingCode, message: missingMessage}); return null; }
+                    if (!s.ok) { errors.push({section: name, code: s.code, message: s.message}); return null; }
+                    return s.data;
+                }
+                var customer = take("customer", "CUSTOMER_BACKEND_UNAVAILABLE", "The customer service did not respond in time.");
+                var accounts = take("accounts", "ACCOUNT_DB_UNAVAILABLE", "Accounts are temporarily unavailable.");
+                var notFound = byName.customer && byName.customer.code === "CUSTOMER_NOT_FOUND";
+                mc.setProperty("DASHBOARD_RESULT",
+                    notFound ? "NOT_FOUND" : (customer === null && accounts === null) ? "UNAVAILABLE" : "OK");
+                mc.setProperty("DASHBOARD_PARTIAL", String(errors.length > 0));
+                mc.setPayloadJSON({
+                    customerId: String(mc.getProperty("uri.var.customerId")),
+                    partial: errors.length > 0,
+                    customer: customer,
+                    accounts: accounts,
+                    errors: errors,
+                    requestId: String(mc.getProperty("REQUEST_ID")),
+                    timestamp: String(mc.getProperty("RESPONSE_TIMESTAMP"))
+                });
+            ]]></script>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_RESPONSE"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="result" expression="get-property('DASHBOARD_RESULT')"/>
+                <property name="partial" expression="get-property('DASHBOARD_PARTIAL')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+            <switch source="get-property('DASHBOARD_RESULT')">
+                <case regex="NOT_FOUND">
+                    <property name="ERROR_STATUS" value="404" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="CUSTOMER_NOT_FOUND" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="No customer exists with the given id." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </case>
+                <case regex="UNAVAILABLE">
+                    <property name="ERROR_STATUS" value="503" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="DASHBOARD_UNAVAILABLE" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="Neither customer nor account data is currently available. Please retry later." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </case>
+                <default>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="Cache-Control" scope="transport" value="no-store"/>
+                    <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+                    <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+                    <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+                    <sequence key="response-logging"/>
+                    <respond/>
+                </default>
+            </switch>
+        </inSequence>
+    </resource>
 </api>

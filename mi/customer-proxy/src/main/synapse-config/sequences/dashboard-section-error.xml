@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  onError handler for the dashboard branches. The scatter-gather aggregator
+  does not collect messages from an error handler, so a failed branch is
+  logged and dropped; the merge step treats a missing section as failed
+  (see CustomerAPI, /{customerId}/dashboard).
+-->
+<sequence name="dashboard-section-error" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="WARN" level="custom" separator=", ">
+        <property name="event" value="DASHBOARD_SECTION_FAILED"/>
+        <property name="section" expression="get-property('SECTION')"/>
+        <property name="errorCode" expression="get-property('ERROR_CODE')"/>
+        <property name="errorMessage" expression="get-property('ERROR_MESSAGE')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <drop/>
+</sequence>
