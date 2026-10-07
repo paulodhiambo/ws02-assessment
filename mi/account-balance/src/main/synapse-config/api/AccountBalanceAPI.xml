@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  GET /accounts/{accountNumber}/balance
+
+  200 -> {accountNumber, status, balance{amount,currency}, requestId, timestamp}
+  400 -> INVALID_ACCOUNT_NUMBER (not exactly 10 digits)
+  404 -> ACCOUNT_NOT_FOUND
+  503 -> ACCOUNT_DB_UNAVAILABLE (database-level failure, see account-balance-fault)
+-->
+<api name="AccountBalanceAPI" context="/accounts" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="GET" uri-template="/{accountNumber}/balance" faultSequence="account-balance-fault">
+        <inSequence>
+            <property name="API_NAME" value="AccountBalanceAPI" scope="default" type="STRING"/>
+            <property name="OPERATION" value="GET /accounts/{accountNumber}/balance" scope="default" type="STRING"/>
+            <property name="STAGE" value="VALIDATION" scope="default" type="STRING"/>
+            <sequence key="correlation"/>
+            <property name="MASK_INPUT" expression="get-property('uri.var.accountNumber')" scope="default" type="STRING"/>
+            <sequence key="mask-sensitive-data"/>
+            <property name="LOG_SUBJECT" expression="concat('account=', get-property('MASKED_VALUE'))" scope="default" type="STRING"/>
+            <sequence key="request-logging"/>
+
+            <filter source="get-property('uri.var.accountNumber')" regex="[0-9]{10}">
+                <then/>
+                <else>
+                    <property name="ERROR_STATUS" value="400" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="INVALID_ACCOUNT_NUMBER" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="accountNumber must be exactly 10 digits." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+
+            <!-- Backend call: parameterised query through the data service. -->
+            <property name="STAGE" value="DB_CALL" scope="default" type="STRING"/>
+            <property name="BACKEND_START" expression="get-property('SYSTEM_TIME')" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_CALL"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backend" value="AccountsDataService.getAccountByNumber"/>
+                <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+            <dataServiceCall serviceName="AccountsDataService">
+                <operations type="single">
+                    <operation name="getAccountByNumber">
+                        <param name="accountNumber" evaluator="xml" expression="get-property('uri.var.accountNumber')"/>
+                    </operation>
+                </operations>
+                <source type="inline"/>
+                <target type="body"/>
+            </dataServiceCall>
+            <property name="STAGE" value="MAPPING" scope="default" type="STRING"/>
+            <log category="INFO" level="custom" separator=", ">
+                <property name="event" value="BACKEND_RESPONSE"/>
+                <property name="api" expression="get-property('API_NAME')"/>
+                <property name="backend" value="AccountsDataService.getAccountByNumber"/>
+                <property xmlns:acc="http://ds.jamiisavings.co.ke/accounts" name="found" expression="boolean(//acc:account)"/>
+                <property name="latencyMs" expression="number(get-property('SYSTEM_TIME')) - number(get-property('BACKEND_START'))"/>
+                <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+            </log>
+
+            <filter xmlns:acc="http://ds.jamiisavings.co.ke/accounts" xpath="boolean(//acc:account)">
+                <then>
+                    <property name="RESPONSE_TIMESTAMP" scope="default" type="STRING"
+                              expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+                    <payloadFactory media-type="json">
+                        <format>{"accountNumber":"$1","status":"$2","balance":{"amount":$3,"currency":"$4"},"requestId":"$5","timestamp":"$6"}</format>
+                        <args>
+                            <arg xmlns:acc="http://ds.jamiisavings.co.ke/accounts" evaluator="xml" expression="//acc:account/acc:accountNumber"/>
+                            <arg xmlns:acc="http://ds.jamiisavings.co.ke/accounts" evaluator="xml" expression="//acc:account/acc:status"/>
+                            <arg xmlns:acc="http://ds.jamiisavings.co.ke/accounts" evaluator="xml" expression="//acc:account/acc:amount"/>
+                            <arg xmlns:acc="http://ds.jamiisavings.co.ke/accounts" evaluator="xml" expression="//acc:account/acc:currency"/>
+                            <arg evaluator="xml" expression="get-property('REQUEST_ID')"/>
+                            <arg evaluator="xml" expression="get-property('RESPONSE_TIMESTAMP')"/>
+                        </args>
+                    </payloadFactory>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+                    <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+                    <property name="ContentType" value="application/json" scope="axis2" type="STRING"/>
+                    <sequence key="response-logging"/>
+                    <respond/>
+                </then>
+                <else>
+                    <property name="ERROR_STATUS" value="404" scope="default" type="STRING"/>
+                    <property name="ERROR_CODE_APP" value="ACCOUNT_NOT_FOUND" scope="default" type="STRING"/>
+                    <property name="ERROR_MSG_APP" value="No account exists with the given account number." scope="default" type="STRING"/>
+                    <sequence key="common-error"/>
+                </else>
+            </filter>
+        </inSequence>
+    </resource>
+</api>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fault sequence for AccountBalanceAPI.
+
+  Failures raised while the data service call is in flight (connection
+  refused, pool timeout, SQL error) are database-level failures: they are
+  reported as 503 ACCOUNT_DB_UNAVAILABLE, distinct from 404 and from generic
+  500s. The underlying error is logged (without the account number) for
+  operators, but never returned to the caller.
+-->
+<sequence name="account-balance-fault" trace="disable" xmlns="http://ws.apache.org/ns/synapse">
+    <log category="ERROR" level="custom" separator=", ">
+        <property name="event" value="FAULT"/>
+        <property name="api" expression="get-property('API_NAME')"/>
+        <property name="stage" expression="get-property('STAGE')"/>
+        <property name="subject" expression="get-property('LOG_SUBJECT')"/>
+        <property name="errorCode" expression="get-property('ERROR_CODE')"/>
+        <property name="errorMessage" expression="get-property('ERROR_MESSAGE')"/>
+        <property name="correlationId" expression="get-property('CORRELATION_ID')"/>
+    </log>
+    <filter source="get-property('STAGE')" regex="DB_CALL">
+        <then>
+            <property name="ERROR_STATUS" value="503" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="ACCOUNT_DB_UNAVAILABLE" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="The accounts database is currently unavailable. Please retry later." scope="default" type="STRING"/>
+        </then>
+        <else>
+            <property name="ERROR_STATUS" value="500" scope="default" type="STRING"/>
+            <property name="ERROR_CODE_APP" value="INTERNAL_ERROR" scope="default" type="STRING"/>
+            <property name="ERROR_MSG_APP" value="An unexpected error occurred." scope="default" type="STRING"/>
+        </else>
+    </filter>
+    <sequence key="common-error"/>
+</sequence>
