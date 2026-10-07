@@ -49,7 +49,7 @@ docker compose up -d mi        # deployed CARs survive (volume), no redeploy nee
 | Phase | What runs |
 |-------|-----------|
 | validate | `build/package_car.py --validate-only`: XML well-formed, artifact names match files, no duplicates across modules |
-| test | `tests/run_tests.py`: 28 artifact tests (policies and per-API contracts) |
+| test | `tests/run_tests.py`: 34 artifact tests (policies and per-API contracts) |
 | package | `build/package_car.py` → `target/cars/Jamii{Common,AccountBalance,CustomerProxy,LoanEligibility}_<version>.car` |
 | install | CARs attached as Maven artifacts (type `car`) |
 

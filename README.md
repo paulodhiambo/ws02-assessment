@@ -10,6 +10,7 @@ environment.
 | 1a | `GET /accounts/{accountNumber}/balance`: MySQL through an MI data service | `mi/account-balance`, `database/accounts` |
 | 1b | `GET /customers/{customerId}`: managed proxy for JSONPlaceholder | `mi/customer-proxy` |
 | 1c | `POST /loans/eligibility`: REST/JSON over the DNE Online SOAP calculator | `mi/loan-eligibility` |
+| bonus A | `GET /customers/{customerId}/dashboard`: parallel aggregation with partial results | `mi/customer-proxy` |
 | shared | correlation IDs, logging, masking, the common error envelope | `mi/common` |
 | 2 | apictl projects, OpenAPI definitions, custom policies, API Product | `apim/` |
 | 3 | `Jenkinsfile` + `scripts/` (build, test, all-or-nothing deploy) | root |
@@ -21,7 +22,7 @@ More detail: [architecture](docs/architecture.md) · [API design, mappings and e
 Needs Docker (about 3 GB of RAM for APIM), JDK 17+, Maven, Python 3.
 
 ```bash
-scripts/build.sh                                       # 4 CARs + APIM packages; runs 28 MI artifact tests
+scripts/build.sh                                       # 4 CARs + APIM packages; runs 34 MI artifact tests
 docker compose --profile apim up -d --build --wait     # MySQL, mocks, MI, APIM (drop --profile apim for MI only)
 scripts/deploy-mi.sh dev                               # MI APIs on http://localhost:8290
 scripts/install-apictl.sh                              # apictl 4.6.4 into .tools/ (scripts find it there)
@@ -81,6 +82,22 @@ Ready-made requests: `tests/integration/*.http`, `tests/negative/*.http`, `tests
   APIM fails after MI succeeded, the pipeline puts MI back too. Both
   rollbacks were tested with deliberately broken artifacts.
 
+## Bonus A: aggregation API
+
+`GET /customers/{customerId}/dashboard` calls the customer backend and the
+accounts database **in parallel** (Scatter-Gather) and merges them into one
+response: profile, accounts, `partial`, `errors`.
+
+**Decision: return partial data, not a failed response.** A dashboard is
+read-only and display-oriented, so showing the accounts while the profile
+service is down is more useful than an error. The failed section is `null`,
+`partial` is `true`, and `errors[]` says why, using the same codes as the
+single APIs (e.g. `ACCOUNT_DB_UNAVAILABLE`). Each branch has a 7s deadline,
+so one slow backend cannot hold the response. The whole response fails only
+when nothing useful is left: an unknown customer gives 404, and both
+sections failing gives 503 `DASHBOARD_UNAVAILABLE`. Details are in
+[API design](docs/api-design.md#bonus-a--customer-dashboard).
+
 ## Assumptions
 
 - Fictional bank, fictional data. KES unless the account says otherwise;
@@ -93,7 +110,7 @@ Ready-made requests: `tests/integration/*.http`, `tests/negative/*.http`, `tests
 - Only dev is wired up. Prod is modelled (`infrastructure/config/prod.env.example`,
   an approval gate, promotion of the same archived artifacts) and runs as a
   dry run.
-- Bonus tasks (aggregation API, message queue) were not attempted.
+- Bonus A is done; Bonus B (message queue) was not attempted.
 
 ## With more time
 
@@ -105,5 +122,5 @@ Ready-made requests: `tests/integration/*.http`, `tests/negative/*.http`, `tests
   to a central platform; Prometheus metrics and alerts on the 5xx codes.
 - A real prod target (Kubernetes with Helm, MI image per release), and
   per-API selective deploys driven by changed paths.
-- The aggregation bonus: parallel clone/aggregate over accounts and
-  customers, returning partial data with the failed section flagged.
+- Bonus B: a RabbitMQ inbound endpoint for loan-application events that
+  reuses the loan template, with a dead-letter queue for malformed messages.

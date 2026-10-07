@@ -68,5 +68,5 @@ note the client only saw `LOAN_REQUEST_REJECTED`. API key auth, Bronze tier.
 ## 4:30 – Pipeline (30s)
 
 Show the Jenkins stage view (or `Jenkinsfile`) and run
-`scripts/test.sh --integration --apim`: 89 assertions passing through the
+`scripts/test.sh --integration --apim`: 104 assertions passing (with the mock backends) through the
 gateway. Mention the rollback tests (`docs/deployment.md`).

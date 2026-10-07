@@ -4,6 +4,7 @@
 |-----|----------------|-------------|---------|
 | Account balance | `GET /jamii/accounts/v1/{accountNumber}/balance` | `GET :8290/accounts/{accountNumber}/balance` | MySQL via `AccountsDataService` |
 | Customer        | `GET /jamii/customers/v1/{customerId}`          | `GET :8290/customers/{customerId}`          | JSONPlaceholder `/users/{id}` |
+| Dashboard (bonus A) | `GET /jamii/customers/v1/{customerId}/dashboard` | `GET :8290/customers/{customerId}/dashboard` | both of the above, in parallel |
 | Loan eligibility| `POST /jamii/loans/v1/eligibility`              | `POST :8290/loans/eligibility`              | DNE Online SOAP calculator |
 | API Product     | `/jamii/core/...` (all three operations)        | n/a                                         | n/a |
 
@@ -53,6 +54,7 @@ happen before MI is reached.
 | 503 | `ACCOUNT_DB_UNAVAILABLE` | accounts | any failure during the database call |
 | 503 | `CUSTOMER_BACKEND_UNAVAILABLE` | customers | connection refused or reset, or endpoint suspended |
 | 503 | `LOAN_SERVICE_UNAVAILABLE` | loans | connection refused or reset, or endpoint suspended |
+| 503 | `DASHBOARD_UNAVAILABLE` | dashboard | both the customer and accounts sections failed |
 | 504 | `CUSTOMER_BACKEND_TIMEOUT` | customers | no response in 5s |
 | 504 | `LOAN_SERVICE_TIMEOUT` | loans | no response in 10s |
 
@@ -164,6 +166,60 @@ assert this.
 Simplifications, stated openly: principal only, no interest; no credit
 history. A real implementation would call the bank's loan engine; that is a
 change of endpoint and template, not of the API contract.
+
+## Bonus A – customer dashboard
+
+`GET /customers/{customerId}/dashboard` (a second resource on `CustomerAPI`;
+exposed as an extra operation on `JamiiCustomersAPI`).
+
+```
+                      ┌─▶ dashboard-customer-section ─▶ CustomerBackendEP (JSONPlaceholder)
+scatter-gather ───────┼─▶ dashboard-accounts-section ─▶ AccountsDataService.getAccountsByCustomer
+(parallel, 7s)        └─▶ heartbeat (answers immediately)
+        │
+        └─▶ merge (script mediator): look sections up by name ─▶ 200 / 404 / 503
+```
+
+```json
+{
+  "customerId": "1",
+  "partial": true,
+  "customer": { "id": 1, "name": "Leanne Graham", "email": "Sincere@april.biz", "phone": "1-770-736-8031 x56442" },
+  "accounts": null,
+  "errors": [ { "section": "accounts", "code": "ACCOUNT_DB_UNAVAILABLE", "message": "Accounts are temporarily unavailable." } ],
+  "requestId": "6fbeb56c-6604-4515-80bc-71bc89d319b6",
+  "timestamp": "2026-10-07T17:22:24.483Z"
+}
+```
+
+**Partial data or fail the whole response? Partial.** The dashboard is a
+read-only view; a customer can still use their balances when the profile
+service is slow, and vice versa. Clients must check `partial` and treat
+`null` sections as unavailable rather than empty. (`accounts: []` means the
+customer genuinely has no accounts.)
+
+| Outcome | Response |
+|---------|----------|
+| both sections OK | 200, `partial: false` |
+| one section failed or missed the 7s deadline | 200, `partial: true`, failed section `null`, reason in `errors` |
+| customer backend says the customer does not exist | 404 `CUSTOMER_NOT_FOUND` (no point showing accounts for an unknown id) |
+| both sections failed | 503 `DASHBOARD_UNAVAILABLE` |
+
+How it works, and what testing it showed:
+
+- Each branch ends with a `{"section": ..., "ok": ...}` object. Branch
+  failures (timeouts, connection errors, DB errors) are caught by an
+  `onError` handler. The aggregator ignores messages produced by error
+  handlers, so the handler logs and drops the message; a missing section
+  counts as failed.
+- The aggregation timer only starts when the first message arrives. A
+  third "heartbeat" branch answers immediately, so a request where both
+  real branches fail still completes at the deadline (without it, that
+  request hung).
+- Branches complete in any order, so the merge looks sections up by name.
+- The accounts array is built by MySQL (`JSON_ARRAYAGG`), which avoids
+  XML-to-JSON pitfalls (single-element arrays, account numbers with
+  leading zeros being turned into numbers).
 
 ## Exposure in API Manager
 
