@@ -8,7 +8,7 @@ Bundles one operation from each API into a single subscribable product:
 | `GET /{customerId}`                      | JamiiCustomersAPI v1     |
 | `POST /eligibility`                      | JamiiLoanEligibilityAPI v1 |
 
-- Gateway context: `/jamii/core/1.0.0`
+- Gateway context: `/jamii/core` (default version; `/jamii/core/1.0.0` also works), e.g. `GET /jamii/core/0100000001/balance`
 - Tier: **Gold** (one quota across the bundle)
 - Security: OAuth2 **or** API key
 
